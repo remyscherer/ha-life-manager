@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.0.0")
+app = FastAPI(title="Life Manager", version="1.0.1")
 logger = logging.getLogger("life_manager")
 
 
@@ -907,139 +907,136 @@ def planner_reason(candidate):
     return ", ".join(reasons[:3])
 
 
+
 def fetch_planner(connection):
     today_date = date.today()
-    weekday = today_date.isoweekday()
 
-    completed_today = set(connection.execute(text("""
-        SELECT DISTINCT quest_id
-        FROM quest_completions
-        WHERE DATE(completed_at)=:today
-    """), {"today": today_date}).scalars().all())
+    # Single source of truth:
+    # If a quest is shown as open in the Today card, the Planner must see it.
+    today = fetch_today(connection)
 
-    rows = connection.execute(text("""
-        SELECT DISTINCT
-            q.id,
-            q.name,
-            q.quest_type,
-            q.description,
-            q.estimated_minutes,
-            q.kbr,
-            q.xp_mode,
-            q.fixed_xp,
-            q.frequency_days,
-            q.project_factor,
-            c.name AS category,
-            c.icon AS category_icon,
-            qs.weekday,
-            qs.interval_days,
-            qs.next_due
-        FROM quests q
-        JOIN categories c ON c.id=q.category_id
-        LEFT JOIN quest_schedules qs ON qs.quest_id=q.id
-        WHERE q.active=1
-          AND c.active=1
-        ORDER BY c.sort_order, q.id
-    """)).mappings().all()
+    today_open = [
+        quest
+        for quest in today["quests"]
+        if not quest.get("completed")
+    ]
 
-    grouped = {}
+    # Load planner-relevant metadata for the exact Today quest IDs.
+    ids = [int(q["id"]) for q in today_open]
+    metadata = {}
 
-    for row in rows:
-        qid = row["id"]
-        if qid in completed_today:
-            continue
+    if ids:
+        placeholders = ",".join(str(x) for x in ids)
 
-        item = grouped.setdefault(qid, {
-            "id": qid,
-            "name": row["name"],
-            "quest_type": row["quest_type"],
-            "description": row["description"],
-            "estimated_minutes": int(row["estimated_minutes"] or 0),
-            "kbr": int(row["kbr"] or 1),
-            "xp_mode": row["xp_mode"],
-            "fixed_xp": row["fixed_xp"],
-            "frequency_days": row["frequency_days"],
-            "project_factor": row["project_factor"],
-            "category": row["category"],
-            "category_icon": row["category_icon"],
-            "scheduled_today": False,
-            "overdue_days": 0,
-            "due_reason": None,
-        })
+        rows = connection.execute(text(f"""
+            SELECT
+                q.id,
+                q.name,
+                q.quest_type,
+                q.description,
+                q.estimated_minutes,
+                q.kbr,
+                q.xp_mode,
+                q.fixed_xp,
+                q.frequency_days,
+                q.project_factor,
+                c.name AS category,
+                c.icon AS category_icon,
+                MAX(
+                    CASE
+                        WHEN qs.next_due IS NOT NULL
+                             AND qs.next_due < CURDATE()
+                        THEN DATEDIFF(CURDATE(), qs.next_due)
+                        ELSE 0
+                    END
+                ) AS overdue_days
+            FROM quests q
+            JOIN categories c ON c.id=q.category_id
+            LEFT JOIN quest_schedules qs ON qs.quest_id=q.id
+            WHERE q.id IN ({placeholders})
+            GROUP BY
+                q.id, q.name, q.quest_type, q.description,
+                q.estimated_minutes, q.kbr, q.xp_mode,
+                q.fixed_xp, q.frequency_days, q.project_factor,
+                c.name, c.icon
+        """)).mappings().all()
 
-        if row["weekday"] == weekday:
-            item["scheduled_today"] = True
-            item["due_reason"] = "Heute geplant"
-
-        if row["interval_days"] == 1:
-            item["scheduled_today"] = True
-            item["due_reason"] = "Tägliche Routine"
-
-        if row["next_due"]:
-            delta = (today_date - row["next_due"]).days
-            if delta >= 0:
-                item["scheduled_today"] = True
-                item["overdue_days"] = max(item["overdue_days"], delta)
-                item["due_reason"] = "Überfällig" if delta > 0 else "Heute fällig"
+        metadata = {int(row["id"]): row for row in rows}
 
     candidates = []
 
-    for item in grouped.values():
-        # Projekte ohne Schedule dürfen trotzdem als verfügbare Aufgaben
-        # in den Planner kommen, aber mit niedrigerem Basisscore.
-        scheduled = item["scheduled_today"]
-        is_unscheduled_project = item["quest_type"] in ("project", "milestone")
+    for today_quest in today_open:
+        qid = int(today_quest["id"])
+        meta = metadata.get(qid)
 
-        if not scheduled and not is_unscheduled_project:
-            continue
+        # Extremely defensive fallback: a Today quest must never vanish from
+        # the Planner simply because optional metadata could not be loaded.
+        if meta:
+            estimated_minutes = int(meta["estimated_minutes"] or 0)
+            kbr = int(meta["kbr"] or 1)
+            quest_type = meta["quest_type"]
+            category = meta["category"]
+            category_icon = meta["category_icon"]
+            overdue_days = int(meta["overdue_days"] or 0)
+            description = meta["description"]
+        else:
+            estimated_minutes = 0
+            kbr = 1
+            quest_type = today_quest.get("quest_type") or "routine"
+            category = today_quest.get("category") or "Sonstiges"
+            category_icon = today_quest.get("category_icon")
+            overdue_days = 0
+            description = None
 
-        xp = calculate_quest_xp(item)
-        kbr = item["kbr"]
-        minutes = item["estimated_minutes"]
-        overdue = item["overdue_days"]
+        xp = int(today_quest.get("xp") or 0)
 
-        score = 0.0
-
-        # Fälligkeit ist der stärkste Faktor.
-        score += 30 if scheduled else 5
-        score += min(40, overdue * 8)
-
-        # Hoher Widerstand bewusst belohnen.
+        score = 30.0
+        score += min(40, overdue_days * 8)
         score += kbr * 6
-
-        # XP gibt Gewicht, darf aber nicht dominieren.
         score += min(20, xp * 0.6)
 
-        # Kleine Aufgaben sind gute "Jetzt"-Kandidaten.
-        if 0 < minutes <= 10:
+        if 0 < estimated_minutes <= 10:
             score += 12
-        elif minutes <= 20 and minutes > 0:
+        elif 0 < estimated_minutes <= 20:
             score += 8
-        elif minutes <= 45 and minutes > 0:
+        elif 0 < estimated_minutes <= 45:
             score += 4
-        elif minutes > 90:
+        elif estimated_minutes > 90:
             score -= 6
 
-        # Training an Trainingstagen etwas hervorheben.
-        if item["quest_type"] == "training" and scheduled:
+        if quest_type == "training":
             score += 10
 
-        # Boss Fight als bewusstes Entwicklungsziel.
         if kbr >= 5:
             score += 8
 
-        candidates.append({
-            **item,
+        candidate = {
+            "id": qid,
+            "name": today_quest["name"],
+            "quest_type": quest_type,
+            "description": description,
+            "estimated_minutes": estimated_minutes,
+            "kbr": kbr,
+            "category": category,
+            "category_icon": category_icon,
+            "overdue_days": overdue_days,
+            "scheduled_today": True,
+            "due_reason": "Heute offen",
             "xp": xp,
             "score": round(score, 1),
-            "reason": planner_reason({
-                **item,
-                "xp": xp,
-            }),
             "boss_fight": kbr >= 5,
-        })
+        }
 
-    candidates.sort(key=lambda x: (-x["score"], x["estimated_minutes"] or 9999, x["name"]))
+        candidate["reason"] = planner_reason(candidate)
+        candidates.append(candidate)
+
+    candidates.sort(
+        key=lambda x: (
+            -x["score"],
+            x["estimated_minutes"] if x["estimated_minutes"] > 0 else 9999,
+            x["name"],
+        )
+    )
 
     top = candidates[:3]
     recommendation = top[0] if top else None
@@ -1060,20 +1057,20 @@ def fetch_planner(connection):
             "score": recommendation["score"],
         })
 
-    today = fetch_today(connection)
-
     return {
         "date": today_date.isoformat(),
         "recommendation": recommendation,
         "focus": top,
         "open_count": len(candidates),
+        "today_open_count": len(today_open),
+        "planner_candidate_count": len(candidates),
         "day_progress_percent": int(today["progress_percent"]),
         "xp_today": int(today["xp_today"]),
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.0",
-            "description": "Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
+            "version": "1.0.1",
+            "description": "Today-Quests als Quelle + KBR + XP + Dauer + Überfälligkeit + Quest-Typ",
         },
     }
 
@@ -1195,7 +1192,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "schema_version": schema_version,
     }
 

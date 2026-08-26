@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.0.0";
-console.info("Life Manager Frontend v1.0.0 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.0.1";
+console.info("Life Manager Frontend v1.0.1 loaded");
 const LM={
   entity:c=>c.entity||"sensor.life_manager",
   esc:v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"),
@@ -731,6 +731,7 @@ class LifeManagerPlannerCard extends HTMLElement{
       <ha-card>
         <small>🧭 PLANNER</small>
         <h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2>
+        <div style="font-size:12px;opacity:.6;margin-top:4px">${Number(d.today_open_count||0)} offene Tagesquests · ${Number(d.planner_candidate_count||0)} vom Planner berücksichtigt</div>
 
         ${rec?`
           <div class="hero">
