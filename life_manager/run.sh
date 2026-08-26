@@ -11,6 +11,12 @@ mkdir -p /homeassistant/www
 cp /frontend/life-manager.js /homeassistant/www/life-manager.js || \
   bashio::log.warning "Konnte life-manager.js nicht automatisch nach /config/www kopieren."
 
+cat > /homeassistant/www/life-manager-version.json <<'EOF'
+{"version":"1.1.1"}
+EOF
+
+bashio::log.info "Frontend v1.1.1 nach /config/www aktualisiert."
+
 bashio::log.info "Starte Life Manager API v0.7.2"
 
 bashio::log.info "Prüfe Life Manager Datenbankmigrationen..."
@@ -21,5 +27,5 @@ if ! python3 migrate.py; then
   exit 1
 fi
 
-bashio::log.info "Starte Life Manager API v1.0.2"
+bashio::log.info "Starte Life Manager API v1.1.1"
 exec uvicorn main:app --host 0.0.0.0 --port 8000

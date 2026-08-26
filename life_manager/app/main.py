@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.0.2")
+app = FastAPI(title="Life Manager", version="1.1.1")
 logger = logging.getLogger("life_manager")
 
 
@@ -60,6 +60,8 @@ class QuestPayload(BaseModel):
     fixed_xp: int | None = Field(default=None, ge=0)
     frequency_days: int | None = Field(default=None, ge=1)
     project_factor: float | None = Field(default=None, ge=0)
+    priority: str = "normal"
+    due_date: date | None = None
     active: bool = True
     weekdays: list[int] = Field(default_factory=list)
     interval_days: int | None = Field(default=None, ge=1)
@@ -76,6 +78,8 @@ def validate_quest_payload(payload: QuestPayload):
         raise HTTPException(status_code=400, detail="Invalid quest_type")
     if payload.xp_mode not in ("fixed", "formula"):
         raise HTTPException(status_code=400, detail="Invalid xp_mode")
+    if payload.priority not in ("low", "normal", "high", "critical"):
+        raise HTTPException(status_code=400, detail="Invalid priority")
     for weekday in payload.weekdays:
         if weekday < 1 or weekday > 7:
             raise HTTPException(status_code=400, detail="Invalid weekday")
@@ -479,6 +483,7 @@ def fetch_quest_manager(connection):
         SELECT q.id,q.name,q.category_id,c.name AS category,
                q.quest_type,q.description,q.estimated_minutes,q.kbr,
                q.xp_mode,q.fixed_xp,q.frequency_days,q.project_factor,
+               q.priority,q.due_date,
                q.active,q.created_at
         FROM quests q
         JOIN categories c ON c.id=q.category_id
@@ -908,11 +913,18 @@ def planner_reason(candidate):
 
 
 
-def fetch_planner(connection):
-    today_date = date.today()
 
-    # Single source of truth:
-    # If a quest is shown as open in the Today card, the Planner must see it.
+def priority_score(priority):
+    return {
+        "low": 0,
+        "normal": 8,
+        "high": 20,
+        "critical": 35,
+    }.get(priority or "normal", 8)
+
+
+def fetch_planner(connection, max_minutes: int | None = None):
+    today_date = date.today()
     today = fetch_today(connection)
 
     today_open = [
@@ -921,7 +933,6 @@ def fetch_planner(connection):
         if not quest.get("completed")
     ]
 
-    # Load planner-relevant metadata for the exact Today quest IDs.
     ids = [int(q["id"]) for q in today_open]
     metadata = {}
 
@@ -936,10 +947,8 @@ def fetch_planner(connection):
                 q.description,
                 q.estimated_minutes,
                 q.kbr,
-                q.xp_mode,
-                q.fixed_xp,
-                q.frequency_days,
-                q.project_factor,
+                q.priority,
+                q.due_date,
                 c.name AS category,
                 c.icon AS category_icon,
                 MAX(
@@ -949,15 +958,14 @@ def fetch_planner(connection):
                         THEN DATEDIFF(CURDATE(), qs.next_due)
                         ELSE 0
                     END
-                ) AS overdue_days
+                ) AS schedule_overdue_days
             FROM quests q
             JOIN categories c ON c.id=q.category_id
             LEFT JOIN quest_schedules qs ON qs.quest_id=q.id
             WHERE q.id IN ({placeholders})
             GROUP BY
                 q.id, q.name, q.quest_type, q.description,
-                q.estimated_minutes, q.kbr, q.xp_mode,
-                q.fixed_xp, q.frequency_days, q.project_factor,
+                q.estimated_minutes, q.kbr, q.priority, q.due_date,
                 c.name, c.icon
         """)).mappings().all()
 
@@ -969,46 +977,95 @@ def fetch_planner(connection):
         qid = int(today_quest["id"])
         meta = metadata.get(qid)
 
-        # Extremely defensive fallback: a Today quest must never vanish from
-        # the Planner simply because optional metadata could not be loaded.
-        if meta:
-            estimated_minutes = int(meta["estimated_minutes"] or 0)
-            kbr = int(meta["kbr"] or 1)
-            quest_type = meta["quest_type"]
-            category = meta["category"]
-            category_icon = meta["category_icon"]
-            overdue_days = int(meta["overdue_days"] or 0)
-            description = meta["description"]
-        else:
-            estimated_minutes = 0
-            kbr = 1
-            quest_type = today_quest.get("quest_type") or "routine"
-            category = today_quest.get("category") or "Sonstiges"
-            category_icon = today_quest.get("category_icon")
-            overdue_days = 0
-            description = None
+        estimated_minutes = int(meta["estimated_minutes"] or 0) if meta else 0
+        kbr = int(meta["kbr"] or 1) if meta else 1
+        quest_type = meta["quest_type"] if meta else today_quest.get("quest_type", "routine")
+        category = meta["category"] if meta else today_quest.get("category", "Sonstiges")
+        category_icon = meta["category_icon"] if meta else today_quest.get("category_icon")
+        priority = (meta["priority"] if meta else "normal") or "normal"
+        due_date = meta["due_date"] if meta else None
+        schedule_overdue = int(meta["schedule_overdue_days"] or 0) if meta else 0
+        description = meta["description"] if meta else None
 
+        due_overdue = 0
+        due_in_days = None
+        if due_date:
+            due_in_days = (due_date - today_date).days
+            if due_in_days < 0:
+                due_overdue = abs(due_in_days)
+
+        overdue_days = max(schedule_overdue, due_overdue)
         xp = int(today_quest.get("xp") or 0)
 
-        score = 30.0
-        score += min(40, overdue_days * 8)
-        score += kbr * 6
-        score += min(20, xp * 0.6)
+        score = 25.0
 
+        # Priority now matters more than trivial task duration.
+        score += priority_score(priority)
+
+        # Due date / overdue.
+        score += min(50, overdue_days * 10)
+        if due_in_days is not None:
+            if due_in_days == 0:
+                score += 25
+            elif due_in_days == 1:
+                score += 15
+            elif 1 < due_in_days <= 3:
+                score += 8
+
+        # KBR / willpower.
+        score += kbr * 5
+
+        # XP contribution, capped.
+        score += min(18, xp * 0.5)
+
+        # Duration is now only a tiebreaker-like influence.
         if 0 < estimated_minutes <= 10:
-            score += 12
-        elif 0 < estimated_minutes <= 20:
-            score += 8
-        elif 0 < estimated_minutes <= 45:
             score += 4
-        elif estimated_minutes > 90:
-            score -= 6
+        elif 0 < estimated_minutes <= 20:
+            score += 3
+        elif 0 < estimated_minutes <= 45:
+            score += 2
+        elif estimated_minutes > 120:
+            score -= 5
 
         if quest_type == "training":
             score += 10
 
         if kbr >= 5:
             score += 8
+
+        fits_time = True
+        if max_minutes is not None and estimated_minutes > 0:
+            fits_time = estimated_minutes <= max_minutes
+            if not fits_time:
+                score -= 40
+
+        reasons = []
+        if priority == "critical":
+            reasons.append("kritische Priorität")
+        elif priority == "high":
+            reasons.append("hohe Priorität")
+
+        if overdue_days > 0:
+            reasons.append(f"{overdue_days} Tag{'e' if overdue_days != 1 else ''} überfällig")
+        elif due_in_days == 0:
+            reasons.append("heute fällig")
+        elif due_in_days == 1:
+            reasons.append("morgen fällig")
+
+        if quest_type == "training":
+            reasons.append("geplantes Training")
+
+        if kbr >= 5:
+            reasons.append("Boss Fight")
+        elif kbr >= 4:
+            reasons.append("hoher Widerstand")
+
+        if max_minutes is not None and fits_time:
+            reasons.append(f"passt in {max_minutes} Min")
+
+        if not reasons:
+            reasons.append("heute sinnvoll")
 
         candidate = {
             "id": qid,
@@ -1017,6 +1074,8 @@ def fetch_planner(connection):
             "description": description,
             "estimated_minutes": estimated_minutes,
             "kbr": kbr,
+            "priority": priority,
+            "due_date": due_date.isoformat() if due_date else None,
             "category": category,
             "category_icon": category_icon,
             "overdue_days": overdue_days,
@@ -1025,13 +1084,14 @@ def fetch_planner(connection):
             "xp": xp,
             "score": round(score, 1),
             "boss_fight": kbr >= 5,
+            "fits_time": fits_time,
+            "reason": ", ".join(reasons[:3]),
         }
-
-        candidate["reason"] = planner_reason(candidate)
         candidates.append(candidate)
 
     candidates.sort(
         key=lambda x: (
+            not x["fits_time"],
             -x["score"],
             x["estimated_minutes"] if x["estimated_minutes"] > 0 else 9999,
             x["name"],
@@ -1064,13 +1124,14 @@ def fetch_planner(connection):
         "open_count": len(candidates),
         "today_open_count": len(today_open),
         "planner_candidate_count": len(candidates),
+        "max_minutes": max_minutes,
         "day_progress_percent": int(today["progress_percent"]),
         "xp_today": int(today["xp_today"]),
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.0.2",
-            "description": "Today-Quests als Quelle + KBR + XP + Dauer + Überfälligkeit + Quest-Typ",
+            "version": "1.1.1",
+            "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
 
@@ -1168,9 +1229,11 @@ def fetch_weekly_review(connection):
 
 
 @app.get("/planner")
-def planner():
+def planner(max_minutes: int | None = None):
+    if max_minutes is not None:
+        max_minutes = max(1, min(max_minutes, 480))
     with engine.begin() as c:
-        return fetch_planner(c)
+        return fetch_planner(c, max_minutes=max_minutes)
 
 
 @app.get("/weekly-review")
@@ -1192,7 +1255,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.0.2",
+        "version": "1.1.1",
         "schema_version": schema_version,
     }
 
@@ -1481,10 +1544,10 @@ def create_quest(
         result = c.execute(text("""
             INSERT INTO quests
             (name,category_id,quest_type,description,estimated_minutes,kbr,
-             xp_mode,fixed_xp,frequency_days,project_factor,active)
+             xp_mode,fixed_xp,frequency_days,project_factor,priority,due_date,active)
             VALUES
             (:name,:category_id,:quest_type,:description,:estimated_minutes,:kbr,
-             :xp_mode,:fixed_xp,:frequency_days,:project_factor,:active)
+             :xp_mode,:fixed_xp,:frequency_days,:project_factor,:priority,:due_date,:active)
         """), values)
 
         quest_id = result.lastrowid
@@ -1494,7 +1557,7 @@ def create_quest(
             SELECT q.id, q.name, q.category_id, c.name AS category,
                    q.quest_type, q.description, q.estimated_minutes, q.kbr,
                    q.xp_mode, q.fixed_xp, q.frequency_days, q.project_factor,
-                   q.active
+                   q.priority, q.due_date, q.active
             FROM quests q
             JOIN categories c ON c.id=q.category_id
             WHERE q.id=:qid
@@ -1535,6 +1598,8 @@ def update_quest(
               fixed_xp=:fixed_xp,
               frequency_days=:frequency_days,
               project_factor=:project_factor,
+              priority=:priority,
+              due_date=:due_date,
               active=:active
             WHERE id=:qid
         """), values)
@@ -1545,7 +1610,7 @@ def update_quest(
             SELECT q.id, q.name, q.category_id, c.name AS category,
                    q.quest_type, q.description, q.estimated_minutes, q.kbr,
                    q.xp_mode, q.fixed_xp, q.frequency_days, q.project_factor,
-                   q.active
+                   q.priority, q.due_date, q.active
             FROM quests q
             JOIN categories c ON c.id=q.category_id
             WHERE q.id=:qid

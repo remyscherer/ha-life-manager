@@ -1,5 +1,38 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.0.2";
-console.info("Life Manager Frontend v1.0.2 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.1.1";
+console.info("Life Manager Frontend v1.1.1 loaded");
+(function(){
+  const CURRENT="1.1.1";
+  const KEY="life_manager_frontend_reload_version";
+
+  async function checkVersion(){
+    try{
+      const response=await fetch(`/local/life-manager-version.json?_=${Date.now()}`,{
+        cache:"no-store"
+      });
+      if(!response.ok)return;
+
+      const data=await response.json();
+      const remote=String(data?.version||"");
+
+      if(!remote || remote===CURRENT)return;
+
+      const already=sessionStorage.getItem(KEY);
+      if(already===remote)return;
+
+      sessionStorage.setItem(KEY,remote);
+      console.info(`Life Manager frontend update detected: ${CURRENT} -> ${remote}`);
+      window.location.reload();
+    }catch(err){
+      console.debug("Life Manager version check skipped",err);
+    }
+  }
+
+  // Initial check after HA has had time to mount resources.
+  setTimeout(checkVersion,1500);
+
+  // Recheck occasionally while HA stays open for days.
+  setInterval(checkVersion,5*60*1000);
+})();
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -154,6 +187,8 @@ class LifeManagerQuestManagerCard extends HTMLElement{
       kbr:this.nullableNumber("lm-kbr"),
       frequency_days:this.nullableNumber("lm-frequency"),
       project_factor:this.nullableNumber("lm-project-factor"),
+      priority:this.value("lm-priority")||"normal",
+      due_date:this.value("lm-due-date")||null,
       weekdays,
       interval_days:this.nullableNumber("lm-interval"),
       next_due:this.value("lm-next-due")||null,
@@ -266,6 +301,19 @@ class LifeManagerQuestManagerCard extends HTMLElement{
             <input id="lm-project-factor" type="number" min="0" step="0.5" value="${q?.project_factor??""}">
           </label>
 
+          <label>Priorität
+            <select id="lm-priority">
+              <option value="low" ${q?.priority==="low"?"selected":""}>Niedrig</option>
+              <option value="normal" ${!q?.priority||q?.priority==="normal"?"selected":""}>Normal</option>
+              <option value="high" ${q?.priority==="high"?"selected":""}>Hoch</option>
+              <option value="critical" ${q?.priority==="critical"?"selected":""}>Kritisch</option>
+            </select>
+          </label>
+
+          <label>Fällig am
+            <input id="lm-due-date" type="date" value="${q?.due_date||""}">
+          </label>
+
           <div class="wide">
             <div class="field-title">Wochentage</div>
             <div class="weekdays">${weekdayBtns}</div>
@@ -365,7 +413,7 @@ class LifeManagerQuestManagerCard extends HTMLElement{
             <div class="row ${q.active?"":"inactive"}">
               <div>
                 <b>${LM.esc(q.name)}</b>
-                <small>${LM.esc(q.category)} · ${LM.esc(q.quest_type)} · ${LM.esc(q.xp_mode)}${q.kbr?` · KBR ${q.kbr}`:""}</small>
+                <small>${LM.esc(q.category)} · ${LM.esc(q.quest_type)} · ${LM.esc(q.xp_mode)}${q.kbr?` · KBR ${q.kbr}`:""}${q.priority?` · ${LM.esc(q.priority)}`:""}${q.due_date?` · fällig ${LM.esc(q.due_date)}`:""}</small>
               </div>
               <span>${q.active?"Aktiv":"Aus"}</span>
               <button class="secondary" data-edit="${q.id}">Bearbeiten</button>
@@ -742,7 +790,7 @@ class LifeManagerPlannerCard extends HTMLElement{
             <div class="hero-head">
               <div>
                 <div class="name">${rec.boss_fight?"⚔️ ":""}${LM.esc(rec.name)}</div>
-                <div class="meta">${LM.esc(rec.category)} · ${Number(rec.estimated_minutes||0)} Min · KBR ${Number(rec.kbr||1)} · +${Number(rec.xp||0)} XP</div>
+                <div class="meta">${LM.esc(rec.category)} · ${Number(rec.estimated_minutes||0)} Min · KBR ${Number(rec.kbr||1)} · ${LM.esc(rec.priority||"normal")} · +${Number(rec.xp||0)} XP${rec.due_date?` · fällig ${LM.esc(rec.due_date)}`:""}</div>
                 <div class="reason"><b>Warum:</b> ${LM.esc(rec.reason||"heute sinnvoll")}</div>
               </div>
               <div class="score">${Number(rec.score||0)} P</div>

@@ -50,6 +50,8 @@ rest_command:
           "fixed_xp": fixed_xp | default(none),
           "frequency_days": frequency_days | default(none),
           "project_factor": project_factor | default(none),
+          "priority": priority | default("normal"),
+          "due_date": due_date | default(none),
           "active": active | default(true),
           "weekdays": weekdays | default([]),
           "interval_days": interval_days | default(none),
@@ -76,6 +78,8 @@ rest_command:
           "fixed_xp": fixed_xp | default(none),
           "frequency_days": frequency_days | default(none),
           "project_factor": project_factor | default(none),
+          "priority": priority | default("normal"),
+          "due_date": due_date | default(none),
           "active": active | default(true),
           "weekdays": weekdays | default([]),
           "interval_days": interval_days | default(none),
@@ -246,6 +250,8 @@ script:
           kbr: "{{ kbr | default(none) }}"
           frequency_days: "{{ frequency_days | default(none) }}"
           project_factor: "{{ project_factor | default(none) }}"
+          priority: "{{ priority | default('normal') }}"
+          due_date: "{{ due_date | default(none) }}"
           weekdays: "{{ weekdays | default([]) }}"
           interval_days: "{{ interval_days | default(none) }}"
           next_due: "{{ next_due | default(none) }}"
@@ -283,6 +289,8 @@ script:
           kbr: "{{ kbr | default(none) }}"
           frequency_days: "{{ frequency_days | default(none) }}"
           project_factor: "{{ project_factor | default(none) }}"
+          priority: "{{ priority | default('normal') }}"
+          due_date: "{{ due_date | default(none) }}"
           weekdays: "{{ weekdays | default([]) }}"
           interval_days: "{{ interval_days | default(none) }}"
           next_due: "{{ next_due | default(none) }}"
