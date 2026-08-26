@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.1.2")
+app = FastAPI(title="Life Manager", version="1.2.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -46,6 +46,16 @@ class SavingsGoalPayload(BaseModel):
     target_coins: int = Field(gt=0)
     reward_id: int | None = None
     active: bool = True
+
+
+
+class WeeklyGoalPayload(BaseModel):
+    name: str
+    goal_type: str = "quest"
+    quest_id: int | None = None
+    target_count: int = Field(default=1, ge=1, le=100)
+    active: bool = True
+    sort_order: int = 0
 
 
 
@@ -1130,7 +1140,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.1.2",
+            "version": "1.2.0",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1228,6 +1238,40 @@ def fetch_weekly_review(connection):
 
 
 
+
+@app.get("/day-plan")
+def day_plan():
+    with engine.begin() as c:
+        return fetch_day_plan(c)
+
+
+@app.get("/weekly-goals")
+def weekly_goals():
+    with engine.begin() as c:
+        return fetch_weekly_goals(c)
+
+
+@app.post("/weekly-goals")
+def create_weekly_goal(
+    payload: WeeklyGoalPayload,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    if payload.goal_type not in ("quest", "quest_type"):
+        raise HTTPException(status_code=400, detail="Invalid goal_type")
+
+    with engine.begin() as c:
+        result = c.execute(text("""
+            INSERT INTO weekly_goals
+                (name, goal_type, quest_id, target_count, active, sort_order)
+            VALUES
+                (:name, :goal_type, :quest_id, :target_count, :active, :sort_order)
+        """), payload.model_dump())
+
+    return {"success": True, "goal_id": result.lastrowid}
+
+
 @app.get("/planner")
 def planner(max_minutes: int | None = None):
     if max_minutes is not None:
@@ -1240,6 +1284,152 @@ def planner(max_minutes: int | None = None):
 def weekly_review():
     with engine.begin() as c:
         return fetch_weekly_review(c)
+
+
+
+def fetch_weekly_goals(connection):
+    today_date = date.today()
+    monday = today_date - timedelta(days=today_date.weekday())
+    sunday = monday + timedelta(days=6)
+
+    goals = connection.execute(text("""
+        SELECT id, name, goal_type, quest_id, target_count, active, sort_order
+        FROM weekly_goals
+        WHERE active=1
+        ORDER BY sort_order, id
+    """)).mappings().all()
+
+    result = []
+
+    for goal in goals:
+        current = 0
+
+        if goal["goal_type"] == "quest" and goal["quest_id"]:
+            current = int(connection.execute(text("""
+                SELECT COUNT(*)
+                FROM quest_completions
+                WHERE quest_id=:qid
+                  AND DATE(completed_at) BETWEEN :start AND :end
+            """), {
+                "qid": goal["quest_id"],
+                "start": monday,
+                "end": sunday,
+            }).scalar_one())
+
+        elif goal["goal_type"] == "quest_type":
+            # Default system goal: training completions per week.
+            current = int(connection.execute(text("""
+                SELECT COUNT(*)
+                FROM quest_completions qc
+                JOIN quests q ON q.id=qc.quest_id
+                WHERE q.quest_type='training'
+                  AND DATE(qc.completed_at) BETWEEN :start AND :end
+            """), {
+                "start": monday,
+                "end": sunday,
+            }).scalar_one())
+
+        target = int(goal["target_count"])
+        remaining = max(0, target - current)
+
+        result.append({
+            "id": goal["id"],
+            "name": goal["name"],
+            "goal_type": goal["goal_type"],
+            "quest_id": goal["quest_id"],
+            "target_count": target,
+            "current_count": current,
+            "remaining": remaining,
+            "progress_percent": min(100, round((current / target) * 100)) if target else 100,
+            "completed": current >= target,
+        })
+
+    return {
+        "week_start": monday.isoformat(),
+        "week_end": sunday.isoformat(),
+        "goals": result,
+        "completed_count": sum(1 for x in result if x["completed"]),
+        "total_count": len(result),
+    }
+
+
+def fetch_day_plan(connection):
+    planner = fetch_planner(connection)
+    weekly_goals = fetch_weekly_goals(connection)
+    today = fetch_today(connection)
+
+    focus = list(planner.get("focus", []))
+
+    plan_items = []
+    used_ids = set()
+
+    # 1. Training first when planned today.
+    for item in focus:
+        if item["quest_type"] == "training":
+            plan_items.append({
+                "order": len(plan_items) + 1,
+                "quest_id": item["id"],
+                "name": item["name"],
+                "category": item["category"],
+                "estimated_minutes": item["estimated_minutes"],
+                "xp": item["xp"],
+                "reason": "Heute geplantes Training",
+                "kind": "training",
+            })
+            used_ids.add(item["id"])
+            break
+
+    # 2. Habit/routine goals next, prioritizing high priority and due tasks already scored.
+    for item in focus:
+        if item["id"] in used_ids:
+            continue
+        if len(plan_items) >= 3:
+            break
+        plan_items.append({
+            "order": len(plan_items) + 1,
+            "quest_id": item["id"],
+            "name": item["name"],
+            "category": item["category"],
+            "estimated_minutes": item["estimated_minutes"],
+            "xp": item["xp"],
+            "reason": item.get("reason") or "Heute sinnvoll",
+            "kind": item["quest_type"],
+        })
+        used_ids.add(item["id"])
+
+    # 3. Add weekly goal guidance if target is at risk / incomplete.
+    missing_week = [
+        {
+            "id": g["id"],
+            "name": g["name"],
+            "remaining": g["remaining"],
+            "target_count": g["target_count"],
+            "current_count": g["current_count"],
+            "progress_percent": g["progress_percent"],
+        }
+        for g in weekly_goals["goals"]
+        if not g["completed"]
+    ]
+
+    today_open = [
+        q for q in today["quests"]
+        if not q.get("completed")
+    ]
+
+    return {
+        "date": date.today().isoformat(),
+        "plan": plan_items,
+        "plan_count": len(plan_items),
+        "open_today_count": len(today_open),
+        "weekly_goals": weekly_goals,
+        "missing_this_week": missing_week,
+        "summary": {
+            "xp_today": today["xp_today"],
+            "possible_xp": today["possible_xp"],
+            "progress_percent": today["progress_percent"],
+            "projected_coins": today["projected_coins"],
+        },
+    }
 
 
 @app.get("/health")
@@ -1255,7 +1445,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.1.2",
+        "version": "1.2.0",
         "schema_version": schema_version,
     }
 
@@ -1275,6 +1465,8 @@ def dashboard():
             "boss_fights": fetch_boss_fights(c),
             "planner": fetch_planner(c),
             "weekly_review": fetch_weekly_review(c),
+            "weekly_goals": fetch_weekly_goals(c),
+            "day_plan": fetch_day_plan(c),
         }
 
         # Stable Home Assistant transport wrapper.

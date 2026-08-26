@@ -1,4 +1,4 @@
-# Life Manager v1.1.2
+# Life Manager v1.2.0
 
 ## Neu
 
@@ -35,7 +35,7 @@ Der API-Key bleibt ausschließlich in `secrets.yaml`.
 1. Add-on stoppen.
 2. Dateien ersetzen.
 3. Add-on neu bauen.
-4. `/health` muss Version `1.1.2` liefern.
+4. `/health` muss Version `1.2.0` liefern.
 5. Frontend-Ressource auf `/local/life-manager.js?v=070` ändern.
 6. `examples/life_manager_package.yaml` übernehmen/abgleichen.
 7. YAML-Konfiguration prüfen.
@@ -65,14 +65,14 @@ update_script: script.life_quest_update
 toggle_script: script.life_quest_toggle
 ```
 
-## v1.1.2 repository cleanup
+## v1.2.0 repository cleanup
 
 - Example configuration no longer contains a personal LAN IP.
 - Repository ships with a basic GitHub Actions validation workflow.
 - Repository metadata is included at the repository root.
 
 
-## v1.1.2 Quest Manager repair
+## v1.2.0 Quest Manager repair
 
 - Quest creation payload uses Home Assistant's `to_json` filter.
 - New inline Quest Editor replaces prompt dialogs.
@@ -82,15 +82,15 @@ toggle_script: script.life_quest_toggle
 - API writes create/update events to the add-on log.
 
 
-## v1.1.2 Frontend refresh fix
+## v1.2.0 Frontend refresh fix
 
 - Schreibaktionen warten bevorzugt auf den direkten Home-Assistant-Script-Service.
 - Fallback auf `script.turn_on` bleibt erhalten.
 - Nach Schreibaktionen wird der REST-Sensor mehrfach aktualisiert.
-- Der Quest Manager zeigt unten `Frontend v1.1.2`, damit Cache-Probleme sofort erkennbar sind.
+- Der Quest Manager zeigt unten `Frontend v1.2.0`, damit Cache-Probleme sofort erkennbar sind.
 
 
-## v1.1.2 Achievements, Boss Fights & Streaks
+## v1.2.0 Achievements, Boss Fights & Streaks
 
 - Achievements werden automatisch aus bestehenden Daten berechnet und freigeschaltet.
 - Neue Achievement Card: `custom:life-manager-achievements-card`
@@ -101,7 +101,7 @@ toggle_script: script.life_quest_toggle
 - Heute offene geplante Aufgaben brechen die Streak nicht sofort.
 
 
-## v1.1.2 Reward System
+## v1.2.0 Reward System
 
 - Reward Manager: Rewards direkt in Home Assistant anlegen, bearbeiten und deaktivieren.
 - Coin History Card mit den letzten 20 Coin-Bewegungen.
@@ -110,7 +110,7 @@ toggle_script: script.life_quest_toggle
 - Reward Shop zeigt weiterhin nur aktive Rewards als kaufbar an.
 
 
-## v1.1.2 Automation & Polish
+## v1.2.0 Automation & Polish
 
 - Datenbankmigrationen laufen automatisch vor dem API-Start.
 - `schema_migrations` protokolliert bereits angewendete Migrationen.
@@ -120,7 +120,7 @@ toggle_script: script.life_quest_toggle
 - Manuelles Ausführen von SQL-Migrationen ist ab dieser Version nicht mehr nötig.
 
 
-## v1.1.2 Planner
+## v1.2.0 Planner
 
 Life Manager now contains a deterministic planning engine.
 
@@ -170,12 +170,12 @@ entity: sensor.life_manager
 title: Wochenrückblick
 ```
 
-The planner is intentionally rule-based in v1.1.2 so every recommendation remains
+The planner is intentionally rule-based in v1.2.0 so every recommendation remains
 explainable. An optional AI layer can be added later without replacing the
 deterministic core.
 
 
-## v1.1.2 Planner Today Fix
+## v1.2.0 Planner Today Fix
 
 - Planner candidates now come directly from `fetch_today()`.
 - Every open quest visible in the Today card is therefore eligible for planning.
@@ -185,13 +185,13 @@ deterministic core.
 - Planner scoring still uses KBR, XP, duration, overdue state, training and Boss Fight status.
 
 
-## v1.1.2 Stable Home Assistant data transport
+## v1.2.0 Stable Home Assistant data transport
 
 Home Assistant previously had to list every `/dashboard` section separately in
 `json_attributes`. That meant new features such as `planner` or `weekly_review`
 required a manual package change.
 
-From v1.1.2 onward `/dashboard` also exposes the complete response under:
+From v1.2.0 onward `/dashboard` also exposes the complete response under:
 
 `data`
 
@@ -210,13 +210,13 @@ compatible with the old flat sensor attributes.
 
 Replace the existing Life Manager `rest:` sensor block once with:
 
-`examples/life_manager_sensor_v1.1.2.yaml`
+`examples/life_manager_sensor_v1.2.0.yaml`
 
 After that, adding new dashboard sections no longer requires modifying
 `json_attributes`.
 
 
-## v1.1.2 Planner 2.0
+## v1.2.0 Planner 2.0
 
 - Quests now have `priority`: low / normal / high / critical.
 - Quests can have an optional `due_date`.
@@ -226,7 +226,7 @@ After that, adding new dashboard sections no longer requires modifying
 - Recommendation reasons now explicitly mention priority, due/overdue state and time fit.
 
 
-## v1.1.2 Frontend Auto-Update
+## v1.2.0 Frontend Auto-Update
 
 From this version onward the Lovelace resource should be registered permanently as:
 
@@ -255,13 +255,13 @@ After this, future Life Manager updates should no longer require manually
 editing the frontend resource URL.
 
 
-## v1.1.2 Stable frontend loader
+## v1.2.0 Stable frontend loader
 
 The previous auto-update approach could not solve a browser that had already
 cached an old `/local/life-manager.js`: the version-check code itself lived
 inside the cached file.
 
-v1.1.2 uses a permanent loader instead.
+v1.2.0 uses a permanent loader instead.
 
 ### One-time Lovelace change
 
@@ -272,10 +272,48 @@ Remove the old Life Manager JavaScript resource and add:
 The loader fetches `life-manager-manifest.json` with `cache: no-store` and then
 loads the version-specific bundle, for example:
 
-`/local/life-manager-1.1.2.js?v=1.1.2`
+`/local/life-manager-1.2.0.js?v=1.2.0`
 
 Future add-on updates write a new versioned bundle and update the manifest.
 The Lovelace resource URL no longer has to change.
 
 For compatibility, `/local/life-manager.js` is still overwritten at every
 add-on start, but it should no longer be registered as the Lovelace resource.
+
+
+## v1.2.0 Day & Week Planning
+
+### Day Plan
+
+`GET /day-plan`
+
+Creates a short ordered day plan from the current Planner focus. Training is
+placed first when scheduled, followed by the strongest remaining candidates.
+
+### Weekly Goals
+
+`GET /weekly-goals`
+
+Weekly goals track recurring targets such as:
+- 5 trainings per week
+- a specific quest N times per week
+
+A default training goal of 5/week is created on first migration.
+
+### New cards
+
+```yaml
+type: custom:life-manager-day-plan-card
+entity: sensor.life_manager
+title: Dein Tagesplan
+```
+
+```yaml
+type: custom:life-manager-weekly-goals-card
+entity: sensor.life_manager
+title: Wochenziele
+script: script.life_weekly_goal_create
+```
+
+The stable frontend loader introduced in v1.1.2 remains in place. No Lovelace
+resource version change is required.

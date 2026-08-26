@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.1.2"' life_manager/config.yaml
+          grep -q 'version: "1.2.0"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -60,3 +60,7 @@ jobs:
   run: |
     test -f life_manager/frontend/life-manager-loader.js
     test -f life_manager/migrations/112_frontend_loader.sql
+
+
+- name: Validate v1.2 planning migration
+  run: test -f life_manager/migrations/120_weekly_goals.sql

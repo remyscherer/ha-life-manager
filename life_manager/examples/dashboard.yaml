@@ -57,3 +57,13 @@ cards:
 - type: custom:life-manager-weekly-review-card
   entity: sensor.life_manager
   title: Wochenrückblick
+
+
+- type: custom:life-manager-day-plan-card
+  entity: sensor.life_manager
+  title: Dein Tagesplan
+
+- type: custom:life-manager-weekly-goals-card
+  entity: sensor.life_manager
+  title: Wochenziele
+  script: script.life_weekly_goal_create

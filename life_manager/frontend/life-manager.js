@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.1.2";
-console.info("Life Manager Frontend v1.1.2 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.2.0";
+console.info("Life Manager Frontend v1.2.0 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -830,6 +830,117 @@ class LifeManagerWeeklyReviewCard extends HTMLElement{
   }
 }
 
+
+class LifeManagerDayPlanCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Dein Tagesplan"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+
+    const d=LM.dataRoot(e).day_plan||{};
+    const plan=Array.isArray(d.plan)?d.plan:[];
+    const missing=Array.isArray(d.missing_this_week)?d.missing_this_week:[];
+
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .item{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:11px 0;border-top:1px solid var(--divider-color)}
+        .order{font-size:18px;font-weight:800;opacity:.6}
+        .meta{font-size:12px;opacity:.65;margin-top:3px}
+        .week{margin-top:16px}
+        .goal{padding:8px 0;border-top:1px solid var(--divider-color)}
+      </style>
+      <ha-card>
+        <small>🗓️ PLAN</small>
+        <h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2>
+
+        ${plan.length?plan.map(x=>`
+          <div class="item">
+            <span class="order">${Number(x.order)}</span>
+            <div>
+              <b>${LM.esc(x.name)}</b>
+              <div class="meta">${LM.esc(x.reason||"")} · ${Number(x.estimated_minutes||0)} Min</div>
+            </div>
+            <span>+${Number(x.xp||0)} XP</span>
+          </div>
+        `).join(""):'<div style="opacity:.65;padding:12px 0">Heute ist aktuell nichts mehr einzuplanen.</div>'}
+
+        <div class="week">
+          <b>Diese Woche fehlt noch</b>
+          ${missing.length?missing.map(g=>`
+            <div class="goal">
+              ${LM.esc(g.name)} · noch ${Number(g.remaining||0)}
+            </div>
+          `).join(""):'<div class="goal">✅ Alle Wochenziele erreicht.</div>'}
+        </div>
+      </ha-card>
+    `;
+  }
+}
+
+class LifeManagerWeeklyGoalsCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Wochenziele",script:c.script||"script.life_weekly_goal_create"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  async create(){
+    const name=prompt("Name des Wochenziels:");
+    if(!name)return;
+    const target=Number(prompt("Wie oft pro Woche?","1"));
+    if(!target)return;
+    try{
+      await LM.callScript(this._hass,this._config.script,{
+        name,
+        goal_type:"quest",
+        quest_id:null,
+        target_count:target,
+        sort_order:0
+      });
+      await LM.refresh(this._hass,this._config.entity);
+    }catch(e){alert(e?.message||"Wochenziel konnte nicht erstellt werden.");}
+  }
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+
+    const d=LM.dataRoot(e).weekly_goals||{};
+    const goals=Array.isArray(d.goals)?d.goals:[];
+
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .head{display:flex;justify-content:space-between;align-items:center}
+        .goal{padding:11px 0;border-top:1px solid var(--divider-color)}
+        .goal-head{display:flex;justify-content:space-between;gap:12px}
+        .bar{margin-top:8px}
+        .meta{font-size:12px;opacity:.65;margin-top:4px}
+      </style>
+      <ha-card>
+        <div class="head">
+          <div><small>🎯 WEEKLY</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div>
+          <button id="wg-add">+ Ziel</button>
+        </div>
+        ${goals.map(g=>`
+          <div class="goal">
+            <div class="goal-head">
+              <b>${g.completed?"✅ ":""}${LM.esc(g.name)}</b>
+              <span>${Number(g.current_count||0)}/${Number(g.target_count||0)}</span>
+            </div>
+            <div class="bar"><div class="fill" style="width:${Math.min(100,Number(g.progress_percent||0))}%"></div></div>
+            <div class="meta">${g.completed?"Ziel erreicht":`${Number(g.remaining||0)} fehlen noch`}</div>
+          </div>
+        `).join("")||"<div>Noch keine Wochenziele.</div>"}
+      </ha-card>
+    `;
+    this.shadowRoot.getElementById("wg-add").onclick=()=>this.create();
+  }
+}
+
 const defs=[
 ["life-manager-card",LifeManagerCard],
 ["life-manager-player-card",LifeManagerPlayerCard],
@@ -845,6 +956,8 @@ const defs=[
 ["life-manager-reward-manager-card",LifeManagerRewardManagerCard],
 ["life-manager-quick-actions-card",LifeManagerQuickActionsCard],
 ["life-manager-planner-card",LifeManagerPlannerCard],
-["life-manager-weekly-review-card",LifeManagerWeeklyReviewCard]
+["life-manager-weekly-review-card",LifeManagerWeeklyReviewCard],
+["life-manager-day-plan-card",LifeManagerDayPlanCard],
+["life-manager-weekly-goals-card",LifeManagerWeeklyGoalsCard]
 ];
 for(const [n,c] of defs){if(!customElements.get(n))customElements.define(n,c);}

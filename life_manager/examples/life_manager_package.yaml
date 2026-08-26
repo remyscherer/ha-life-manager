@@ -147,6 +147,25 @@ rest_command:
       }}
 
 
+  life_weekly_goal_create:
+    url: "http://HOME_ASSISTANT_IP:8000/weekly-goals"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >-
+      {{
+        {
+          "name": name,
+          "goal_type": goal_type | default("quest"),
+          "quest_id": quest_id | default(none),
+          "target_count": target_count | int,
+          "active": true,
+          "sort_order": sort_order | default(0) | int
+        } | to_json
+      }}
+
+
 rest:
   - resource: "http://HOME_ASSISTANT_IP:8000/dashboard"
     scan_interval: 60
@@ -336,6 +355,18 @@ script:
           name: "{{ name }}"
           target_coins: "{{ target_coins }}"
           reward_id: "{{ reward_id | default(none) }}"
+
+
+  life_weekly_goal_create:
+    alias: Life Manager - Wochenziel erstellen
+    sequence:
+      - action: rest_command.life_weekly_goal_create
+        data:
+          name: "{{ name }}"
+          goal_type: "{{ goal_type | default('quest') }}"
+          quest_id: "{{ quest_id | default(none) }}"
+          target_count: "{{ target_count }}"
+          sort_order: "{{ sort_order | default(0) }}"
 
 
 automation:
