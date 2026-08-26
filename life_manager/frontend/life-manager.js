@@ -1,6 +1,10 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.0.1";
-console.info("Life Manager Frontend v1.0.1 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.0.2";
+console.info("Life Manager Frontend v1.0.2 loaded");
 const LM={
+  dataRoot:e=>{
+    const attrs=e?.attributes||{};
+    return attrs.data||attrs;
+  },
   entity:c=>c.entity||"sensor.life_manager",
   esc:v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"),
   missing:e=>`<ha-card><div style="padding:16px">Sensor ${LM.esc(e)} fehlt.</div></ha-card>`,
@@ -31,35 +35,35 @@ class LifeManagerCard extends HTMLElement{
   setConfig(c){this._config={entity:LM.entity(c),script:c.script||"script.life_quest_complete",title:c.title||"Life Manager"};this.render();}
   set hass(h){this._hass=h;this.render();}
   async complete(id,o){if(this._busy.has(id))return;this._busy.add(id);this.render();try{await LM.callScript(this._hass,this._config.script,{quest_id:Number(id),overcome:Boolean(o)});await LM.refresh(this._hass,this._config.entity);}catch(e){alert(e?.message||"Quest konnte nicht abgeschlossen werden.");}finally{this._busy.delete(id);this.render();}}
-  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=(e.attributes||{}).today||{},qs=Array.isArray(d.quests)?d.quests:[],g={};for(const q of qs)(g[q.category||"Sonstiges"]??=[]).push(q);const html=Object.entries(g).map(([cat,items])=>`<h3>${LM.esc(cat)}</h3>${items.map(q=>`<div class="q ${q.completed?"done":""}"><div><b>${LM.esc(q.name)}</b><small>+${Number(q.xp||0)} XP</small></div>${q.completed?`<span>✓</span>`:`<div class="actions"><button data-id="${q.id}" data-o="0">✓</button>${q.quest_type==="training"?`<button class="secondary" data-id="${q.id}" data-o="1">🔥</button>`:""}</div>`}</div>`).join("")}`).join("");this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:end}.pct{font-size:28px;font-weight:800}.bar{margin:12px 0 16px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.q{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--divider-color);padding:10px 0}.q small{display:block;opacity:.65}.done{opacity:.55}.actions{display:flex;gap:6px}@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}</style><ha-card><div class="head"><div><small>HEUTE</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="pct">${Number(d.progress_percent||0)}%</div></div><div class="bar"><div class="fill" style="width:${Math.min(100,Number(d.progress_percent||0))}%"></div></div><div class="stats"><div class="stat"><b>${Number(d.xp_today||0)}/${Number(d.possible_xp||0)}</b><small>XP</small></div><div class="stat"><b>${Number(d.completed_count||0)}/${Number(d.quest_count||0)}</b><small>Quests</small></div><div class="stat"><b>${Number(d.willpower_xp_today||0)}</b><small>Willpower</small></div><div class="stat"><b>${Number(d.projected_coins||0)} 🪙</b><small>Heute</small></div></div>${html}</ha-card>`;this.shadowRoot.querySelectorAll("button[data-id]").forEach(b=>b.onclick=()=>this.complete(Number(b.dataset.id),b.dataset.o==="1"));}
+  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=LM.dataRoot(e).today||{},qs=Array.isArray(d.quests)?d.quests:[],g={};for(const q of qs)(g[q.category||"Sonstiges"]??=[]).push(q);const html=Object.entries(g).map(([cat,items])=>`<h3>${LM.esc(cat)}</h3>${items.map(q=>`<div class="q ${q.completed?"done":""}"><div><b>${LM.esc(q.name)}</b><small>+${Number(q.xp||0)} XP</small></div>${q.completed?`<span>✓</span>`:`<div class="actions"><button data-id="${q.id}" data-o="0">✓</button>${q.quest_type==="training"?`<button class="secondary" data-id="${q.id}" data-o="1">🔥</button>`:""}</div>`}</div>`).join("")}`).join("");this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:end}.pct{font-size:28px;font-weight:800}.bar{margin:12px 0 16px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.q{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--divider-color);padding:10px 0}.q small{display:block;opacity:.65}.done{opacity:.55}.actions{display:flex;gap:6px}@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}</style><ha-card><div class="head"><div><small>HEUTE</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="pct">${Number(d.progress_percent||0)}%</div></div><div class="bar"><div class="fill" style="width:${Math.min(100,Number(d.progress_percent||0))}%"></div></div><div class="stats"><div class="stat"><b>${Number(d.xp_today||0)}/${Number(d.possible_xp||0)}</b><small>XP</small></div><div class="stat"><b>${Number(d.completed_count||0)}/${Number(d.quest_count||0)}</b><small>Quests</small></div><div class="stat"><b>${Number(d.willpower_xp_today||0)}</b><small>Willpower</small></div><div class="stat"><b>${Number(d.projected_coins||0)} 🪙</b><small>Heute</small></div></div>${html}</ha-card>`;this.shadowRoot.querySelectorAll("button[data-id]").forEach(b=>b.onclick=()=>this.complete(Number(b.dataset.id),b.dataset.o==="1"));}
 }
 
 class LifeManagerPlayerCard extends HTMLElement{
   constructor(){super();this.attachShadow({mode:"open"});}
   setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Player"};this.render();}
   set hass(h){this._hass=h;this.render();}
-  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=(e.attributes||{}).player||{};this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:20px}.top{display:flex;justify-content:space-between;align-items:center}.level{font-size:34px;font-weight:800}.bar{margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}</style><ha-card><div class="top"><div><small>🎮 ${LM.esc(this._config.title)}</small><div class="level">Level ${Number(d.level||1)}</div></div><b>${Number(d.xp_into_level||0)}/100 XP</b></div><div class="bar"><div class="fill" style="width:${Math.min(100,Number(d.level_progress_percent||0))}%"></div></div><div class="stats"><div class="stat"><b>${Number(d.total_xp||0)}</b><small>Gesamt-XP</small></div><div class="stat"><b>${Number(d.coin_balance||0)} 🪙</b><small>Coins</small></div><div class="stat"><b>${Number(d.willpower_xp||0)} 🔥</b><small>Willpower</small></div></div></ha-card>`;}
+  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=LM.dataRoot(e).player||{};this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:20px}.top{display:flex;justify-content:space-between;align-items:center}.level{font-size:34px;font-weight:800}.bar{margin:14px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}</style><ha-card><div class="top"><div><small>🎮 ${LM.esc(this._config.title)}</small><div class="level">Level ${Number(d.level||1)}</div></div><b>${Number(d.xp_into_level||0)}/100 XP</b></div><div class="bar"><div class="fill" style="width:${Math.min(100,Number(d.level_progress_percent||0))}%"></div></div><div class="stats"><div class="stat"><b>${Number(d.total_xp||0)}</b><small>Gesamt-XP</small></div><div class="stat"><b>${Number(d.coin_balance||0)} 🪙</b><small>Coins</small></div><div class="stat"><b>${Number(d.willpower_xp||0)} 🔥</b><small>Willpower</small></div></div></ha-card>`;}
 }
 
 class LifeManagerTrainingCard extends HTMLElement{
   constructor(){super();this.attachShadow({mode:"open"});}
   setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Trainingswoche"};this.render();}
   set hass(h){this._hass=h;this.render();}
-  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=(e.attributes||{}).training||{},it=Array.isArray(d.trainings)?d.trainings:[],n=["","Mo","Di","Mi","Do","Fr","Sa","So"];this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:center}.score{font-size:22px;font-weight:800}.row{display:grid;grid-template-columns:42px 28px 1fr;gap:8px;padding:10px 0;border-top:1px solid var(--divider-color)}.done{opacity:.6}</style><ha-card><div class="head"><div><small>🏋️ FITNESS</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="score">${Number(d.completed_count||0)}/${Number(d.planned_count||0)}</div></div>${it.map(x=>`<div class="row ${x.completed?"done":""}"><b>${n[x.weekday]||""}</b><span>${x.completed?"✅":"○"}</span><span>${LM.esc(x.name)}</span></div>`).join("")}</ha-card>`;}
+  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=LM.dataRoot(e).training||{},it=Array.isArray(d.trainings)?d.trainings:[],n=["","Mo","Di","Mi","Do","Fr","Sa","So"];this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:center}.score{font-size:22px;font-weight:800}.row{display:grid;grid-template-columns:42px 28px 1fr;gap:8px;padding:10px 0;border-top:1px solid var(--divider-color)}.done{opacity:.6}</style><ha-card><div class="head"><div><small>🏋️ FITNESS</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="score">${Number(d.completed_count||0)}/${Number(d.planned_count||0)}</div></div>${it.map(x=>`<div class="row ${x.completed?"done":""}"><b>${n[x.weekday]||""}</b><span>${x.completed?"✅":"○"}</span><span>${LM.esc(x.name)}</span></div>`).join("")}</ha-card>`;}
 }
 
 class LifeManagerStreakCard extends HTMLElement{
   constructor(){super();this.attachShadow({mode:"open"});}
   setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Streaks"};this.render();}
   set hass(h){this._hass=h;this.render();}
-  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=(e.attributes||{}).streaks||{},it=Array.isArray(d.streaks)?d.streaks:[];this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.row{display:grid;grid-template-columns:1fr auto auto;gap:12px;padding:9px 0;border-top:1px solid var(--divider-color)}.fire{font-weight:800}.best{opacity:.6;font-size:12px}</style><ha-card><small>🔥 CONSISTENCY</small><h2 style="margin:2px 0 12px">${LM.esc(this._config.title)}</h2>${it.length?it.map(x=>`<div class="row"><span>${LM.esc(x.name)}</span><span class="fire">${Number(x.current_streak||0)} 🔥</span><span class="best">Best ${Number(x.best_streak||0)}</span></div>`).join(""):"<div>Noch keine Streaks.</div>"}</ha-card>`;}
+  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=LM.dataRoot(e).streaks||{},it=Array.isArray(d.streaks)?d.streaks:[];this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.row{display:grid;grid-template-columns:1fr auto auto;gap:12px;padding:9px 0;border-top:1px solid var(--divider-color)}.fire{font-weight:800}.best{opacity:.6;font-size:12px}</style><ha-card><small>🔥 CONSISTENCY</small><h2 style="margin:2px 0 12px">${LM.esc(this._config.title)}</h2>${it.length?it.map(x=>`<div class="row"><span>${LM.esc(x.name)}</span><span class="fire">${Number(x.current_streak||0)} 🔥</span><span class="best">Best ${Number(x.best_streak||0)}</span></div>`).join(""):"<div>Noch keine Streaks.</div>"}</ha-card>`;}
 }
 
 class LifeManagerWeekCard extends HTMLElement{
   constructor(){super();this.attachShadow({mode:"open"});}
   setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Diese Woche"};this.render();}
   set hass(h){this._hass=h;this.render();}
-  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=(e.attributes||{}).week||{},days=Array.isArray(d.days)?d.days:[],names=["Mo","Di","Mi","Do","Fr","Sa","So"],max=Math.max(1,...days.map(x=>Number(x.xp||0)));this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.summary{display:flex;gap:16px;margin-bottom:18px}.summary b{font-size:20px}.summary small{display:block;opacity:.65}.chart{height:150px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end}.col{display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end}.bd{width:70%;min-height:2px;background:var(--primary-color);border-radius:6px 6px 2px 2px}.label{font-size:11px;margin-top:6px}.val{font-size:10px;opacity:.65}</style><ha-card><small>📊 WEEKLY</small><h2 style="margin:2px 0 12px">${LM.esc(this._config.title)}</h2><div class="summary"><span><b>${Number(d.xp_total||0)}</b><small>XP</small></span><span><b>${Number(d.completed_total||0)}</b><small>Quests</small></span><span><b>${Number(d.willpower_xp_total||0)}</b><small>Willpower</small></span></div><div class="chart">${days.map((x,i)=>`<div class="col"><div class="val">${Number(x.xp||0)}</div><div class="bd" style="height:${Math.max(2,(Number(x.xp||0)/max)*110)}px"></div><div class="label">${names[i]||""}</div></div>`).join("")}</div></ha-card>`;}
+  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=LM.dataRoot(e).week||{},days=Array.isArray(d.days)?d.days:[],names=["Mo","Di","Mi","Do","Fr","Sa","So"],max=Math.max(1,...days.map(x=>Number(x.xp||0)));this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.summary{display:flex;gap:16px;margin-bottom:18px}.summary b{font-size:20px}.summary small{display:block;opacity:.65}.chart{height:150px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end}.col{display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end}.bd{width:70%;min-height:2px;background:var(--primary-color);border-radius:6px 6px 2px 2px}.label{font-size:11px;margin-top:6px}.val{font-size:10px;opacity:.65}</style><ha-card><small>📊 WEEKLY</small><h2 style="margin:2px 0 12px">${LM.esc(this._config.title)}</h2><div class="summary"><span><b>${Number(d.xp_total||0)}</b><small>XP</small></span><span><b>${Number(d.completed_total||0)}</b><small>Quests</small></span><span><b>${Number(d.willpower_xp_total||0)}</b><small>Willpower</small></span></div><div class="chart">${days.map((x,i)=>`<div class="col"><div class="val">${Number(x.xp||0)}</div><div class="bd" style="height:${Math.max(2,(Number(x.xp||0)/max)*110)}px"></div><div class="label">${names[i]||""}</div></div>`).join("")}</div></ha-card>`;}
 }
 
 class LifeManagerRewardCard extends HTMLElement{
@@ -67,7 +71,7 @@ class LifeManagerRewardCard extends HTMLElement{
   setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Reward Shop",script:c.script||"script.life_reward_purchase"};this.render();}
   set hass(h){this._hass=h;this.render();}
   async buy(id){this._busy=id;this.render();try{await LM.callScript(this._hass,this._config.script,{reward_id:Number(id),quantity:1});await LM.refresh(this._hass,this._config.entity);}catch(e){alert(e?.message||"Reward konnte nicht gekauft werden.");}finally{this._busy=null;this.render();}}
-  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=(e.attributes||{}).rewards||{},rs=Array.isArray(d.rewards)?d.rewards:[];this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:center}.balance{font-size:26px;font-weight:800}.reward{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border-top:1px solid var(--divider-color);padding:12px 0}.reward small{display:block;opacity:.65}.cost{font-weight:800}.locked{opacity:.45}</style><ha-card><div class="head"><div><small>🪙 REWARDS</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="balance">${Number(d.coin_balance||0)} 🪙</div></div>${rs.map(x=>`<div class="reward ${x.can_afford?"":"locked"}"><div><b>${LM.esc(x.name)}</b><small>${LM.esc(x.description||"")}</small></div><div class="cost">${Number(x.cost||0)} 🪙</div><button data-buy="${x.id}" ${(!x.can_afford||this._busy===x.id)?"disabled":""}>${this._busy===x.id?"…":"Kaufen"}</button></div>`).join("")||"<div>Keine Rewards angelegt.</div>"}</ha-card>`;this.shadowRoot.querySelectorAll("button[data-buy]").forEach(b=>b.onclick=()=>this.buy(Number(b.dataset.buy)));}
+  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=LM.dataRoot(e).rewards||{},rs=Array.isArray(d.rewards)?d.rewards:[];this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:center}.balance{font-size:26px;font-weight:800}.reward{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border-top:1px solid var(--divider-color);padding:12px 0}.reward small{display:block;opacity:.65}.cost{font-weight:800}.locked{opacity:.45}</style><ha-card><div class="head"><div><small>🪙 REWARDS</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="balance">${Number(d.coin_balance||0)} 🪙</div></div>${rs.map(x=>`<div class="reward ${x.can_afford?"":"locked"}"><div><b>${LM.esc(x.name)}</b><small>${LM.esc(x.description||"")}</small></div><div class="cost">${Number(x.cost||0)} 🪙</div><button data-buy="${x.id}" ${(!x.can_afford||this._busy===x.id)?"disabled":""}>${this._busy===x.id?"…":"Kaufen"}</button></div>`).join("")||"<div>Keine Rewards angelegt.</div>"}</ha-card>`;this.shadowRoot.querySelectorAll("button[data-buy]").forEach(b=>b.onclick=()=>this.buy(Number(b.dataset.buy)));}
 }
 
 
@@ -94,7 +98,7 @@ class LifeManagerQuestManagerCard extends HTMLElement{
   set hass(h){this._hass=h;this.render();}
 
   getData(){
-    return (this._hass?.states?.[this._config.entity]?.attributes||{}).quest_manager||{};
+    return LM.dataRoot(this._hass?.states?.[this._config.entity]).quest_manager||{};
   }
 
   async call(script,variables){
@@ -400,7 +404,7 @@ class LifeManagerAchievementsCard extends HTMLElement{
     if(!this._config)return;
     const e=this._hass?.states?.[this._config.entity];
     if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
-    const d=(e.attributes||{}).achievements||{};
+    const d=LM.dataRoot(e).achievements||{};
     const items=Array.isArray(d.achievements)?d.achievements:[];
     this.shadowRoot.innerHTML=`
       <style>
@@ -442,7 +446,7 @@ class LifeManagerBossCard extends HTMLElement{
     if(!this._config)return;
     const e=this._hass?.states?.[this._config.entity];
     if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
-    const d=(e.attributes||{}).boss_fights||{};
+    const d=LM.dataRoot(e).boss_fights||{};
     const items=Array.isArray(d.active)?d.active:[];
     this.shadowRoot.innerHTML=`
       <style>
@@ -483,7 +487,7 @@ class LifeManagerCoinHistoryCard extends HTMLElement{
     if(!this._config)return;
     const e=this._hass?.states?.[this._config.entity];
     if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
-    const d=(e.attributes||{}).rewards||{};
+    const d=LM.dataRoot(e).rewards||{};
     const items=Array.isArray(d.coin_history)?d.coin_history:[];
     this.shadowRoot.innerHTML=`
       <style>
@@ -528,7 +532,7 @@ class LifeManagerSavingsCard extends HTMLElement{
     if(!this._config)return;
     const e=this._hass?.states?.[this._config.entity];
     if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
-    const d=(e.attributes||{}).rewards||{};
+    const d=LM.dataRoot(e).rewards||{};
     const goals=Array.isArray(d.savings_goals)?d.savings_goals:[];
     this.shadowRoot.innerHTML=`
       <style>
@@ -574,7 +578,7 @@ class LifeManagerRewardManagerCard extends HTMLElement{
     this.render();
   }
   set hass(h){this._hass=h;this.render();}
-  data(){return (this._hass?.states?.[this._config.entity]?.attributes||{}).rewards||{};}
+  data(){return LM.dataRoot(this._hass?.states?.[this._config.entity]).rewards||{};}
   async call(script,variables){await LM.callScript(this._hass,script,variables);await LM.refresh(this._hass,this._config.entity);}
   edit(id){this._editId=id;this.render();}
   close(){this._editId=null;this.render();}
@@ -674,7 +678,7 @@ class LifeManagerQuickActionsCard extends HTMLElement{
     if(!this._config)return;
     const e=this._hass?.states?.[this._config.entity];
     if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
-    const today=(e.attributes||{}).today||{};
+    const today=LM.dataRoot(e).today||{};
     this.shadowRoot.innerHTML=`
       <style>
         ${LM.styles()}
@@ -710,7 +714,7 @@ class LifeManagerPlannerCard extends HTMLElement{
     const e=this._hass?.states?.[this._config.entity];
     if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
 
-    const d=(e.attributes||{}).planner||{};
+    const d=LM.dataRoot(e).planner||{};
     const rec=d.recommendation||null;
     const focus=Array.isArray(d.focus)?d.focus:[];
 
@@ -772,7 +776,7 @@ class LifeManagerWeeklyReviewCard extends HTMLElement{
     const e=this._hass?.states?.[this._config.entity];
     if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
 
-    const d=(e.attributes||{}).weekly_review||{};
+    const d=LM.dataRoot(e).weekly_review||{};
     const insights=Array.isArray(d.insights)?d.insights:[];
     const focus=Array.isArray(d.next_focus)?d.next_focus:[];
 

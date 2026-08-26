@@ -21,5 +21,5 @@ if ! python3 migrate.py; then
   exit 1
 fi
 
-bashio::log.info "Starte Life Manager API v1.0.1"
+bashio::log.info "Starte Life Manager API v1.0.2"
 exec uvicorn main:app --host 0.0.0.0 --port 8000

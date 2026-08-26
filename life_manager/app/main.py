@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.0.1")
+app = FastAPI(title="Life Manager", version="1.0.2")
 logger = logging.getLogger("life_manager")
 
 
@@ -1069,7 +1069,7 @@ def fetch_planner(connection):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.0.1",
+            "version": "1.0.2",
             "description": "Today-Quests als Quelle + KBR + XP + Dauer + Überfälligkeit + Quest-Typ",
         },
     }
@@ -1192,7 +1192,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "schema_version": schema_version,
     }
 
@@ -1200,7 +1200,7 @@ def health():
 @app.get("/dashboard")
 def dashboard():
     with engine.begin() as c:
-        return {
+        payload = {
             "today": fetch_today(c),
             "player": fetch_player(c),
             "training": fetch_training_week(c),
@@ -1212,6 +1212,14 @@ def dashboard():
             "boss_fights": fetch_boss_fights(c),
             "planner": fetch_planner(c),
             "weekly_review": fetch_weekly_review(c),
+        }
+
+        # Stable Home Assistant transport wrapper.
+        # HA only needs to expose the single `data` attribute from now on.
+        # Legacy top-level fields remain for backward compatibility.
+        return {
+            **payload,
+            "data": payload,
         }
 
 

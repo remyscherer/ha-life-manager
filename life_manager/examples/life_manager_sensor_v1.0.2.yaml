@@ -1,0 +1,16 @@
+# Replace ONLY your existing `rest:` Life Manager sensor block with this.
+#
+# After this one-time change, future Life Manager dashboard fields are
+# transported inside the single `data` attribute and no longer require
+# additions to json_attributes.
+
+rest:
+  - resource: "http://HOME_ASSISTANT_IP:8000/dashboard"
+    scan_interval: 60
+    sensor:
+      - name: "Life Manager"
+        unique_id: life_manager
+        value_template: "{{ value_json.data.today.progress_percent }}"
+        unit_of_measurement: "%"
+        json_attributes:
+          - data

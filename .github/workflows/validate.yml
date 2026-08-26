@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.0.1"' life_manager/config.yaml
+          grep -q 'version: "1.0.2"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -39,3 +39,10 @@ jobs:
 
 - name: Validate v1.0.1 planner migration
   run: test -f life_manager/migrations/101_planner_today_fix.sql
+
+
+- name: Validate v1.0.2 dashboard transport migration
+  run: test -f life_manager/migrations/102_dashboard_data_wrapper.sql
+
+- name: Validate future-proof HA sensor example
+  run: test -f life_manager/examples/life_manager_sensor_v1.0.2.yaml

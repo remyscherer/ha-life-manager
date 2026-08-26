@@ -149,20 +149,10 @@ rest:
     sensor:
       - name: "Life Manager"
         unique_id: life_manager
-        value_template: "{{ value_json.today.progress_percent }}"
+        value_template: "{{ value_json.data.today.progress_percent }}"
         unit_of_measurement: "%"
         json_attributes:
-          - today
-          - player
-          - training
-          - week
-          - streaks
-          - rewards
-          - quest_manager
-          - achievements
-          - boss_fights
-          - planner
-          - weekly_review
+          - data
 
 script:
   life_quest_complete:
