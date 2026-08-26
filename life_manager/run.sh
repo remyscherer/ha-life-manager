@@ -11,7 +11,7 @@ mkdir -p /homeassistant/www
 cp /frontend/life-manager.js /homeassistant/www/life-manager.js || \
   bashio::log.warning "Konnte life-manager.js nicht automatisch nach /config/www kopieren."
 
-bashio::log.info "Starte Life Manager API v0.7.0"
+bashio::log.info "Starte Life Manager API v0.7.2"
 
 cd /app
 exec uvicorn main:app --host 0.0.0.0 --port 8000

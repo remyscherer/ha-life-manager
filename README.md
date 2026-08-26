@@ -1,12 +1,21 @@
 # Home Assistant Life Manager
 
-Custom Home Assistant add-on repository for Life Manager.
+Custom Home Assistant add-on repository for **Life Manager**.
 
-## Repository installation
+## Installation
 
 Add this repository to the Home Assistant Add-on Store:
 
-https://github.com/remyscherer/ha-life-manager
+`https://github.com/remyscherer/ha-life-manager`
 
-The `life_manager/` directory contains the Home Assistant add-on.
-Current packaged version: **0.7.0**.
+Then install or update **Life Manager** from the Add-on Store.
+
+## Current version
+
+**0.7.2**
+
+## Notes
+
+- No secrets belong in this repository.
+- Keep your `life_manager_api_key` in Home Assistant `secrets.yaml`.
+- Example files use `HOME_ASSISTANT_IP` as a placeholder; replace it locally.

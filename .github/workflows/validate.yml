@@ -1,0 +1,33 @@
+name: Validate Life Manager
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate Python syntax
+        run: python -m py_compile life_manager/app/main.py
+
+      - name: Validate required files
+        run: |
+          test -f repository.yaml
+          test -f life_manager/config.yaml
+          test -f life_manager/Dockerfile
+          test -f life_manager/run.sh
+          test -f life_manager/frontend/life-manager.js
+
+      - name: Check add-on version
+        run: |
+          grep -q 'version: "0.7.2"' life_manager/config.yaml

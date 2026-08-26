@@ -1,6 +1,6 @@
 rest_command:
   life_complete_quest:
-    url: "http://192.168.0.74:8000/quests/{{ quest_id }}/complete"
+    url: "http://HOME_ASSISTANT_IP:8000/quests/{{ quest_id }}/complete"
     method: POST
     headers:
       x-api-key: !secret life_manager_api_key
@@ -9,7 +9,7 @@ rest_command:
       {"overcome": {{ overcome | default(false) | lower }}}
 
   life_reward_purchase:
-    url: "http://192.168.0.74:8000/rewards/{{ reward_id }}/purchase"
+    url: "http://HOME_ASSISTANT_IP:8000/rewards/{{ reward_id }}/purchase"
     method: POST
     headers:
       x-api-key: !secret life_manager_api_key
@@ -18,21 +18,21 @@ rest_command:
       {"quantity": {{ quantity | default(1) }}}
 
   life_quest_toggle:
-    url: "http://192.168.0.74:8000/quests/{{ quest_id }}/toggle"
+    url: "http://HOME_ASSISTANT_IP:8000/quests/{{ quest_id }}/toggle"
     method: POST
     headers:
       x-api-key: !secret life_manager_api_key
     content_type: "application/json"
 
   life_day_finalize:
-    url: "http://192.168.0.74:8000/day/finalize"
+    url: "http://HOME_ASSISTANT_IP:8000/day/finalize"
     method: POST
     headers:
       x-api-key: !secret life_manager_api_key
     content_type: "application/json"
 
   life_quest_create:
-    url: "http://192.168.0.74:8000/quests"
+    url: "http://HOME_ASSISTANT_IP:8000/quests"
     method: POST
     headers:
       x-api-key: !secret life_manager_api_key
@@ -62,7 +62,7 @@ rest_command:
       }
 
   life_quest_update:
-    url: "http://192.168.0.74:8000/quests/{{ quest_id }}"
+    url: "http://HOME_ASSISTANT_IP:8000/quests/{{ quest_id }}"
     method: PUT
     headers:
       x-api-key: !secret life_manager_api_key
@@ -92,7 +92,7 @@ rest_command:
       }
 
 rest:
-  - resource: "http://192.168.0.74:8000/dashboard"
+  - resource: "http://HOME_ASSISTANT_IP:8000/dashboard"
     scan_interval: 60
     sensor:
       - name: "Life Manager"
