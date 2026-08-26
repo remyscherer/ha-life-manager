@@ -42,3 +42,9 @@ cards:
   create_script: script.life_reward_create
   update_script: script.life_reward_update
   toggle_script: script.life_reward_toggle
+
+
+- type: custom:life-manager-quick-actions-card
+  entity: sensor.life_manager
+  title: Quick Actions
+  finalize_script: script.life_day_finalize

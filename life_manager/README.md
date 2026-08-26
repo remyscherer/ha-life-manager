@@ -1,4 +1,4 @@
-# Life Manager v0.9.0
+# Life Manager v0.9.1
 
 ## Neu
 
@@ -35,7 +35,7 @@ Der API-Key bleibt ausschließlich in `secrets.yaml`.
 1. Add-on stoppen.
 2. Dateien ersetzen.
 3. Add-on neu bauen.
-4. `/health` muss Version `0.9.0` liefern.
+4. `/health` muss Version `0.9.1` liefern.
 5. Frontend-Ressource auf `/local/life-manager.js?v=070` ändern.
 6. `examples/life_manager_package.yaml` übernehmen/abgleichen.
 7. YAML-Konfiguration prüfen.
@@ -65,14 +65,14 @@ update_script: script.life_quest_update
 toggle_script: script.life_quest_toggle
 ```
 
-## v0.9.0 repository cleanup
+## v0.9.1 repository cleanup
 
 - Example configuration no longer contains a personal LAN IP.
 - Repository ships with a basic GitHub Actions validation workflow.
 - Repository metadata is included at the repository root.
 
 
-## v0.9.0 Quest Manager repair
+## v0.9.1 Quest Manager repair
 
 - Quest creation payload uses Home Assistant's `to_json` filter.
 - New inline Quest Editor replaces prompt dialogs.
@@ -82,15 +82,15 @@ toggle_script: script.life_quest_toggle
 - API writes create/update events to the add-on log.
 
 
-## v0.9.0 Frontend refresh fix
+## v0.9.1 Frontend refresh fix
 
 - Schreibaktionen warten bevorzugt auf den direkten Home-Assistant-Script-Service.
 - Fallback auf `script.turn_on` bleibt erhalten.
 - Nach Schreibaktionen wird der REST-Sensor mehrfach aktualisiert.
-- Der Quest Manager zeigt unten `Frontend v0.9.0`, damit Cache-Probleme sofort erkennbar sind.
+- Der Quest Manager zeigt unten `Frontend v0.9.1`, damit Cache-Probleme sofort erkennbar sind.
 
 
-## v0.9.0 Achievements, Boss Fights & Streaks
+## v0.9.1 Achievements, Boss Fights & Streaks
 
 - Achievements werden automatisch aus bestehenden Daten berechnet und freigeschaltet.
 - Neue Achievement Card: `custom:life-manager-achievements-card`
@@ -101,10 +101,20 @@ toggle_script: script.life_quest_toggle
 - Heute offene geplante Aufgaben brechen die Streak nicht sofort.
 
 
-## v0.9.0 Reward System
+## v0.9.1 Reward System
 
 - Reward Manager: Rewards direkt in Home Assistant anlegen, bearbeiten und deaktivieren.
 - Coin History Card mit den letzten 20 Coin-Bewegungen.
 - Sparziele mit Fortschrittsanzeige.
 - Neue Tabellenstruktur für Savings Goals.
 - Reward Shop zeigt weiterhin nur aktive Rewards als kaufbar an.
+
+
+## v0.9.1 Automation & Polish
+
+- Datenbankmigrationen laufen automatisch vor dem API-Start.
+- `schema_migrations` protokolliert bereits angewendete Migrationen.
+- Bei einer fehlgeschlagenen Migration startet die API bewusst nicht.
+- `/health` liefert zusätzlich `schema_version`.
+- Neue Quick-Actions-Card für manuelles Aktualisieren und Tagesabschluss.
+- Manuelles Ausführen von SQL-Migrationen ist ab dieser Version nicht mehr nötig.

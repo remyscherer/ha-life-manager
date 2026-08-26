@@ -13,5 +13,13 @@ cp /frontend/life-manager.js /homeassistant/www/life-manager.js || \
 
 bashio::log.info "Starte Life Manager API v0.7.2"
 
+bashio::log.info "Prüfe Life Manager Datenbankmigrationen..."
 cd /app
+
+if ! python3 migrate.py; then
+  bashio::log.fatal "Datenbankmigration fehlgeschlagen. API wird nicht gestartet."
+  exit 1
+fi
+
+bashio::log.info "Starte Life Manager API v0.9.1"
 exec uvicorn main:app --host 0.0.0.0 --port 8000

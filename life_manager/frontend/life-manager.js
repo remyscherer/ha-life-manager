@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="0.9.0";
-console.info("Life Manager Frontend v0.9.0 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="0.9.1";
+console.info("Life Manager Frontend v0.9.1 loaded");
 const LM={
   entity:c=>c.entity||"sensor.life_manager",
   esc:v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"),
@@ -648,6 +648,58 @@ class LifeManagerRewardManagerCard extends HTMLElement{
   }
 }
 
+
+class LifeManagerQuickActionsCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});this._busy=false;this._message="";}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Quick Actions",finalize_script:c.finalize_script||"script.life_day_finalize"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  async finalize(){
+    if(this._busy)return;this._busy=true;this._message="";this.render();
+    try{
+      await LM.callScript(this._hass,this._config.finalize_script,{});
+      await LM.refresh(this._hass,this._config.entity);
+      this._message="✅ Tagesabschluss durchgeführt.";
+    }catch(e){this._message=`❌ ${e?.message||"Tagesabschluss fehlgeschlagen."}`;}
+    finally{this._busy=false;this.render();}
+  }
+  async refresh(){
+    if(this._busy)return;this._busy=true;this.render();
+    try{
+      await this._hass.callService("homeassistant","update_entity",{entity_id:this._config.entity});
+      this._message="✅ Daten aktualisiert.";
+    }catch(e){this._message=`❌ ${e?.message||"Aktualisierung fehlgeschlagen."}`;}
+    finally{this._busy=false;this.render();}
+  }
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+    const today=(e.attributes||{}).today||{};
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:14px 18px}
+        .head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+        .actions{display:flex;gap:8px;flex-wrap:wrap}
+        .status{font-size:12px;opacity:.7;margin-top:8px}
+        .summary{font-size:12px;opacity:.65}
+        @media(max-width:520px){.actions{width:100%}.actions button{flex:1;min-height:44px}}
+      </style>
+      <ha-card>
+        <div class="head">
+          <div><b>${LM.esc(this._config.title)}</b><div class="summary">${Number(today.progress_percent||0)}% · ${Number(today.xp_today||0)}/${Number(today.possible_xp||0)} XP · ${Number(today.projected_coins||0)} 🪙</div></div>
+          <div class="actions">
+            <button class="secondary" id="lm-refresh" ${this._busy?"disabled":""}>↻ Aktualisieren</button>
+            <button id="lm-finalize" ${this._busy||today.day_finalized?"disabled":""}>${today.day_finalized?"✓ Abgeschlossen":"Tagesabschluss"}</button>
+          </div>
+        </div>
+        ${this._message?`<div class="status">${LM.esc(this._message)}</div>`:""}
+      </ha-card>`;
+    this.shadowRoot.getElementById("lm-refresh").onclick=()=>this.refresh();
+    this.shadowRoot.getElementById("lm-finalize").onclick=()=>this.finalize();
+  }
+}
+
 const defs=[
 ["life-manager-card",LifeManagerCard],
 ["life-manager-player-card",LifeManagerPlayerCard],
@@ -660,6 +712,7 @@ const defs=[
 ["life-manager-boss-card",LifeManagerBossCard],
 ["life-manager-coin-history-card",LifeManagerCoinHistoryCard],
 ["life-manager-savings-card",LifeManagerSavingsCard],
-["life-manager-reward-manager-card",LifeManagerRewardManagerCard]
+["life-manager-reward-manager-card",LifeManagerRewardManagerCard],
+["life-manager-quick-actions-card",LifeManagerQuickActionsCard]
 ];
 for(const [n,c] of defs){if(!customElements.get(n))customElements.define(n,c);}

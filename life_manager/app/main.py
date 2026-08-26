@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="0.9.0")
+app = FastAPI(title="Life Manager", version="0.9.1")
 logger = logging.getLogger("life_manager")
 
 
@@ -879,7 +879,18 @@ def fetch_boss_fights(connection):
 def health():
     with engine.connect() as c:
         c.execute(text("SELECT 1"))
-    return {"status": "ok", "database": "connected", "version": "0.9.0"}
+        schema_version = c.execute(text("""
+            SELECT meta_value
+            FROM life_manager_meta
+            WHERE meta_key='schema_version'
+            LIMIT 1
+        """)).scalar()
+    return {
+        "status": "ok",
+        "database": "connected",
+        "version": "0.9.1",
+        "schema_version": schema_version,
+    }
 
 
 @app.get("/dashboard")

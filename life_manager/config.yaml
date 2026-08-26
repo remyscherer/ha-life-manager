@@ -1,6 +1,6 @@
 name: "Life Manager"
 description: "Life Manager API, automatischer Tagesabschluss und Quest Editor"
-version: "0.9.0"
+version: "0.9.1"
 slug: "life_manager"
 init: false
 
