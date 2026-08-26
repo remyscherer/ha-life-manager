@@ -8,14 +8,26 @@ export MYSQL_PASSWORD="$(bashio::config 'mysql_password')"
 export API_KEY="$(bashio::config 'api_key')"
 
 mkdir -p /homeassistant/www
-cp /frontend/life-manager.js /homeassistant/www/life-manager.js || \
-  bashio::log.warning "Konnte life-manager.js nicht automatisch nach /config/www kopieren."
 
-cat > /homeassistant/www/life-manager-version.json <<'EOF'
-{"version":"1.1.1"}
+FRONTEND_VERSION="1.1.2"
+FRONTEND_FILE="life-manager-${FRONTEND_VERSION}.js"
+
+cp /frontend/life-manager.js "/homeassistant/www/${FRONTEND_FILE}" || \
+  bashio::log.fatal "Konnte Life Manager Frontend nicht nach /config/www kopieren."
+
+cp /frontend/life-manager-loader.js /homeassistant/www/life-manager-loader.js || \
+  bashio::log.fatal "Konnte Life Manager Loader nicht nach /config/www kopieren."
+
+cat > /homeassistant/www/life-manager-manifest.json <<EOF
+{"version":"${FRONTEND_VERSION}","file":"/local/${FRONTEND_FILE}"}
 EOF
 
-bashio::log.info "Frontend v1.1.1 nach /config/www aktualisiert."
+# Legacy filename deliberately stays updated too, so direct/manual access is not misleading.
+cp /frontend/life-manager.js /homeassistant/www/life-manager.js || \
+  bashio::log.warning "Konnte Legacy-Datei life-manager.js nicht aktualisieren."
+
+bashio::log.info "Frontend ${FRONTEND_VERSION} und Loader nach /config/www aktualisiert."
+
 
 bashio::log.info "Starte Life Manager API v0.7.2"
 
@@ -27,5 +39,5 @@ if ! python3 migrate.py; then
   exit 1
 fi
 
-bashio::log.info "Starte Life Manager API v1.1.1"
+bashio::log.info "Starte Life Manager API v1.1.2"
 exec uvicorn main:app --host 0.0.0.0 --port 8000

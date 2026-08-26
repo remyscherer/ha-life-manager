@@ -1,38 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.1.1";
-console.info("Life Manager Frontend v1.1.1 loaded");
-(function(){
-  const CURRENT="1.1.1";
-  const KEY="life_manager_frontend_reload_version";
-
-  async function checkVersion(){
-    try{
-      const response=await fetch(`/local/life-manager-version.json?_=${Date.now()}`,{
-        cache:"no-store"
-      });
-      if(!response.ok)return;
-
-      const data=await response.json();
-      const remote=String(data?.version||"");
-
-      if(!remote || remote===CURRENT)return;
-
-      const already=sessionStorage.getItem(KEY);
-      if(already===remote)return;
-
-      sessionStorage.setItem(KEY,remote);
-      console.info(`Life Manager frontend update detected: ${CURRENT} -> ${remote}`);
-      window.location.reload();
-    }catch(err){
-      console.debug("Life Manager version check skipped",err);
-    }
-  }
-
-  // Initial check after HA has had time to mount resources.
-  setTimeout(checkVersion,1500);
-
-  // Recheck occasionally while HA stays open for days.
-  setInterval(checkVersion,5*60*1000);
-})();
+window.LIFE_MANAGER_FRONTEND_VERSION="1.1.2";
+console.info("Life Manager Frontend v1.1.2 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
