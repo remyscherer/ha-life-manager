@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.6.1";
-console.info("Life Manager Frontend v1.6.1 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.6.2";
+console.info("Life Manager Frontend v1.6.2 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -90,190 +90,6 @@ class LifeManagerCard extends HTMLElement{
     await this.occurrence(id,"move",target);
   }
 
-
-  renderManagement(d){
-    const qm=d.quest_manager||{};
-    const quests=Array.isArray(qm.quests)?qm.quests:[];
-    const rewards=(d.rewards||{}).rewards||[];
-
-    return `
-      <div class="content-grid">
-        <section class="panel span2">
-          <div class="section-head">
-            <div>
-              <div class="eyebrow">🧩 QUESTS</div>
-              <h3>Quest-Verwaltung</h3>
-            </div>
-          </div>
-
-          <div class="manager-list">
-            ${quests.map(q=>`
-              <div class="manager-row ${q.active?"":"dim"}">
-                <div class="manager-main">
-                  <b>${LM.esc(q.name)}</b>
-                  <small>
-                    ${LM.esc(q.category||"")} ·
-                    ${LM.esc(q.quest_type||"")} ·
-                    KBR ${Number(q.kbr||0)} ·
-                    ${LM.esc(q.priority||"normal")}
-                    ${q.due_date?` · fällig ${LM.esc(q.due_date)}`:""}
-                  </small>
-                </div>
-                <div class="manager-actions">
-                  <button type="button" class="secondary" data-q-edit="${q.id}">Bearbeiten</button>
-                  <button type="button" class="secondary" data-q-toggle="${q.id}">
-                    ${q.active?"Deaktivieren":"Aktivieren"}
-                  </button>
-                </div>
-              </div>
-            `).join("")||'<div class="empty">Keine Quests vorhanden.</div>'}
-          </div>
-
-          <div class="manager-footer">
-            <button type="button" data-q-new>+ Neue Quest</button>
-          </div>
-        </section>
-
-        <section class="panel span2">
-          <div class="section-head">
-            <div>
-              <div class="eyebrow">🎁 REWARDS</div>
-              <h3>Reward-Verwaltung</h3>
-            </div>
-          </div>
-
-          <div class="manager-list">
-            ${rewards.map(r=>`
-              <div class="manager-row ${r.active?"":"dim"}">
-                <div class="manager-main">
-                  <b>${r.wishlist?"⭐ ":""}${LM.esc(r.name)}</b>
-                  <small>${Number(r.cost||0)} 🪙 · ${LM.esc(r.description||"")}</small>
-                </div>
-                <div class="manager-actions">
-                  <button type="button" class="secondary" data-r-edit="${r.id}">Bearbeiten</button>
-                  <button type="button" class="secondary" data-r-toggle="${r.id}">
-                    ${r.active?"Deaktivieren":"Aktivieren"}
-                  </button>
-                </div>
-              </div>
-            `).join("")||'<div class="empty">Keine Rewards vorhanden.</div>'}
-          </div>
-
-          <div class="manager-footer">
-            <button type="button" data-r-new>+ Neuer Reward</button>
-          </div>
-        </section>
-      </div>
-    `;
-  }
-
-  async managerCall(script,variables){
-    await LM.callScript(this._hass,script,variables);
-    await LM.refresh(this._hass,this._config.entity);
-  }
-
-  async newQuest(){
-    const name=prompt("Name der neuen Quest:");
-    if(!name)return;
-    const categoryId=Number(prompt("Kategorie-ID:","1"));
-    if(!categoryId)return;
-    const type=prompt("Quest-Typ:","routine")||"routine";
-    const minutes=Number(prompt("Geschätzte Minuten:","15")||0);
-    const kbr=Number(prompt("KBR 1-5:","3")||3);
-    const fixedXp=Number(prompt("Feste XP:","1")||1);
-
-    await this.managerCall(this._config.quest_create_script,{
-      name,
-      category_id:categoryId,
-      quest_type:type,
-      description:null,
-      estimated_minutes:minutes,
-      kbr,
-      xp_mode:"fixed",
-      fixed_xp:fixedXp,
-      frequency_days:null,
-      project_factor:null,
-      priority:"normal",
-      due_date:null,
-      weekdays:[],
-      active:true
-    });
-  }
-
-  async editQuest(id){
-    const d=this.root();
-    const q=(d?.quest_manager?.quests||[]).find(x=>Number(x.id)===Number(id));
-    if(!q)return;
-
-    const name=prompt("Quest-Name:",q.name);
-    if(!name)return;
-    const minutes=Number(prompt("Minuten:",String(q.estimated_minutes??0))||0);
-    const kbr=Number(prompt("KBR 1-5:",String(q.kbr??3))||3);
-    const priority=prompt("Priorität (low/normal/high/critical):",q.priority||"normal")||"normal";
-
-    await this.managerCall(this._config.quest_update_script,{
-      quest_id:Number(id),
-      name,
-      category_id:Number(q.category_id||1),
-      quest_type:q.quest_type||"routine",
-      description:q.description||null,
-      estimated_minutes:minutes,
-      kbr,
-      xp_mode:q.xp_mode||"fixed",
-      fixed_xp:q.fixed_xp??1,
-      frequency_days:q.frequency_days??null,
-      project_factor:q.project_factor??null,
-      priority,
-      due_date:q.due_date||null,
-      weekdays:q.weekdays||[],
-      active:q.active!==false
-    });
-  }
-
-  async toggleQuest(id){
-    await this.managerCall(this._config.quest_toggle_script,{quest_id:Number(id)});
-  }
-
-  async newReward(){
-    const name=prompt("Name des Rewards:");
-    if(!name)return;
-    const cost=Number(prompt("Kosten in Coins:","10")||0);
-    const description=prompt("Beschreibung:","")||null;
-
-    await this.managerCall(this._config.reward_create_script,{
-      name,
-      description,
-      cost,
-      icon:"mdi:gift",
-      active:true,
-      sort_order:0
-    });
-  }
-
-  async editReward(id){
-    const d=this.root();
-    const r=(d?.rewards?.rewards||[]).find(x=>Number(x.id)===Number(id));
-    if(!r)return;
-
-    const name=prompt("Reward-Name:",r.name);
-    if(!name)return;
-    const cost=Number(prompt("Kosten in Coins:",String(r.cost??0))||0);
-    const description=prompt("Beschreibung:",r.description||"")||null;
-
-    await this.managerCall(this._config.reward_update_script,{
-      reward_id:Number(id),
-      name,
-      description,
-      cost,
-      icon:r.icon||"mdi:gift",
-      active:r.active!==false,
-      sort_order:r.sort_order??0
-    });
-  }
-
-  async toggleReward(id){
-    await this.managerCall(this._config.reward_toggle_script,{reward_id:Number(id)});
-  }
 
   render(){
     if(!this._config)return;
@@ -1618,6 +1434,190 @@ class LifeManagerDashboardCard extends HTMLElement{
     `;
   }
 
+  renderManagement(d){
+    const qm=d.quest_manager||{};
+    const quests=Array.isArray(qm.quests)?qm.quests:[];
+    const rewards=(d.rewards||{}).rewards||[];
+
+    return `
+      <div class="content-grid">
+        <section class="panel span2">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">🧩 QUESTS</div>
+              <h3>Quest-Verwaltung</h3>
+            </div>
+          </div>
+
+          <div class="manager-list">
+            ${quests.map(q=>`
+              <div class="manager-row ${q.active?"":"dim"}">
+                <div class="manager-main">
+                  <b>${LM.esc(q.name)}</b>
+                  <small>
+                    ${LM.esc(q.category||"")} ·
+                    ${LM.esc(q.quest_type||"")} ·
+                    KBR ${Number(q.kbr||0)} ·
+                    ${LM.esc(q.priority||"normal")}
+                    ${q.due_date?` · fällig ${LM.esc(q.due_date)}`:""}
+                  </small>
+                </div>
+                <div class="manager-actions">
+                  <button type="button" class="secondary" data-q-edit="${q.id}">Bearbeiten</button>
+                  <button type="button" class="secondary" data-q-toggle="${q.id}">
+                    ${q.active?"Deaktivieren":"Aktivieren"}
+                  </button>
+                </div>
+              </div>
+            `).join("")||'<div class="empty">Keine Quests vorhanden.</div>'}
+          </div>
+
+          <div class="manager-footer">
+            <button type="button" data-q-new>+ Neue Quest</button>
+          </div>
+        </section>
+
+        <section class="panel span2">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">🎁 REWARDS</div>
+              <h3>Reward-Verwaltung</h3>
+            </div>
+          </div>
+
+          <div class="manager-list">
+            ${rewards.map(r=>`
+              <div class="manager-row ${r.active?"":"dim"}">
+                <div class="manager-main">
+                  <b>${r.wishlist?"⭐ ":""}${LM.esc(r.name)}</b>
+                  <small>${Number(r.cost||0)} 🪙 · ${LM.esc(r.description||"")}</small>
+                </div>
+                <div class="manager-actions">
+                  <button type="button" class="secondary" data-r-edit="${r.id}">Bearbeiten</button>
+                  <button type="button" class="secondary" data-r-toggle="${r.id}">
+                    ${r.active?"Deaktivieren":"Aktivieren"}
+                  </button>
+                </div>
+              </div>
+            `).join("")||'<div class="empty">Keine Rewards vorhanden.</div>'}
+          </div>
+
+          <div class="manager-footer">
+            <button type="button" data-r-new>+ Neuer Reward</button>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  async managerCall(script,variables){
+    await LM.callScript(this._hass,script,variables);
+    await LM.refresh(this._hass,this._config.entity);
+  }
+
+  async newQuest(){
+    const name=prompt("Name der neuen Quest:");
+    if(!name)return;
+    const categoryId=Number(prompt("Kategorie-ID:","1"));
+    if(!categoryId)return;
+    const type=prompt("Quest-Typ:","routine")||"routine";
+    const minutes=Number(prompt("Geschätzte Minuten:","15")||0);
+    const kbr=Number(prompt("KBR 1-5:","3")||3);
+    const fixedXp=Number(prompt("Feste XP:","1")||1);
+
+    await this.managerCall(this._config.quest_create_script,{
+      name,
+      category_id:categoryId,
+      quest_type:type,
+      description:null,
+      estimated_minutes:minutes,
+      kbr,
+      xp_mode:"fixed",
+      fixed_xp:fixedXp,
+      frequency_days:null,
+      project_factor:null,
+      priority:"normal",
+      due_date:null,
+      weekdays:[],
+      active:true
+    });
+  }
+
+  async editQuest(id){
+    const d=this.root();
+    const q=(d?.quest_manager?.quests||[]).find(x=>Number(x.id)===Number(id));
+    if(!q)return;
+
+    const name=prompt("Quest-Name:",q.name);
+    if(!name)return;
+    const minutes=Number(prompt("Minuten:",String(q.estimated_minutes??0))||0);
+    const kbr=Number(prompt("KBR 1-5:",String(q.kbr??3))||3);
+    const priority=prompt("Priorität (low/normal/high/critical):",q.priority||"normal")||"normal";
+
+    await this.managerCall(this._config.quest_update_script,{
+      quest_id:Number(id),
+      name,
+      category_id:Number(q.category_id||1),
+      quest_type:q.quest_type||"routine",
+      description:q.description||null,
+      estimated_minutes:minutes,
+      kbr,
+      xp_mode:q.xp_mode||"fixed",
+      fixed_xp:q.fixed_xp??1,
+      frequency_days:q.frequency_days??null,
+      project_factor:q.project_factor??null,
+      priority,
+      due_date:q.due_date||null,
+      weekdays:q.weekdays||[],
+      active:q.active!==false
+    });
+  }
+
+  async toggleQuest(id){
+    await this.managerCall(this._config.quest_toggle_script,{quest_id:Number(id)});
+  }
+
+  async newReward(){
+    const name=prompt("Name des Rewards:");
+    if(!name)return;
+    const cost=Number(prompt("Kosten in Coins:","10")||0);
+    const description=prompt("Beschreibung:","")||null;
+
+    await this.managerCall(this._config.reward_create_script,{
+      name,
+      description,
+      cost,
+      icon:"mdi:gift",
+      active:true,
+      sort_order:0
+    });
+  }
+
+  async editReward(id){
+    const d=this.root();
+    const r=(d?.rewards?.rewards||[]).find(x=>Number(x.id)===Number(id));
+    if(!r)return;
+
+    const name=prompt("Reward-Name:",r.name);
+    if(!name)return;
+    const cost=Number(prompt("Kosten in Coins:",String(r.cost??0))||0);
+    const description=prompt("Beschreibung:",r.description||"")||null;
+
+    await this.managerCall(this._config.reward_update_script,{
+      reward_id:Number(id),
+      name,
+      description,
+      cost,
+      icon:r.icon||"mdi:gift",
+      active:r.active!==false,
+      sort_order:r.sort_order??0
+    });
+  }
+
+  async toggleReward(id){
+    await this.managerCall(this._config.reward_toggle_script,{reward_id:Number(id)});
+  }
+
   render(){
     if(!this._config)return;
     const entity=this._hass?.states?.[this._config.entity];
@@ -1710,7 +1710,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.6.1</div>
+          <div class="version">Frontend v1.6.2</div>
         </div>
 
         <div class="tabs">
