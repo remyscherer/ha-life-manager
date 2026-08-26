@@ -3,7 +3,6 @@ import logging
 from datetime import date, timedelta
 
 from fastapi import FastAPI, HTTPException, Header
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 
@@ -14,7 +13,6 @@ MYSQL_DATABASE = os.environ["MYSQL_DATABASE"]
 MYSQL_USER = os.environ["MYSQL_USER"]
 MYSQL_PASSWORD = os.environ["MYSQL_PASSWORD"]
 API_KEY = os.environ["API_KEY"]
-FRONTEND_ACTION_TOKEN = os.environ.get("FRONTEND_ACTION_TOKEN", "")
 
 DATABASE_URL = (
     f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}"
@@ -22,26 +20,8 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.5.2")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-    allow_headers=["*"],
-)
-
+app = FastAPI(title="Life Manager", version="1.5.3")
 logger = logging.getLogger("life_manager")
-
-
-def check_frontend_token(authorization: str | None):
-    if not FRONTEND_ACTION_TOKEN:
-        raise HTTPException(status_code=503, detail="Frontend actions are not configured")
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Frontend action token required")
-    token = authorization[7:]
-    if token != FRONTEND_ACTION_TOKEN:
-        raise HTTPException(status_code=401, detail="Invalid frontend action token")
-    return token
 
 
 class CompleteQuest(BaseModel):
@@ -1167,7 +1147,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.5.2",
+            "version": "1.5.3",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1753,149 +1733,6 @@ def fetch_analytics(connection):
     }
 
 
-
-
-@app.get("/frontend/dashboard")
-def frontend_dashboard():
-    # Dashboard data is intentionally read-only and contains no API secret.
-    with engine.begin() as c:
-        payload = {
-            "today": fetch_today_effective(c),
-            "player": fetch_player(c),
-            "training": fetch_training_week(c),
-            "week": fetch_week(c),
-            "streaks": fetch_streaks_v2(c),
-            "planner": fetch_planner(c),
-            "weekly_review": fetch_weekly_review(c),
-            "weekly_goals": fetch_weekly_goals(c),
-            "day_plan": fetch_day_plan(c),
-            "analytics": fetch_analytics(c),
-            "rewards": fetch_rewards(c),
-            "achievements": evaluate_achievements(c),
-            "boss_fights": fetch_boss_fights(c),
-            "quest_manager": fetch_quest_manager(c),
-        }
-        return {"data": payload, "version": "1.5.2"}
-
-
-@app.post("/frontend/quests/{quest_id}/occurrence")
-def frontend_occurrence(
-    quest_id: int,
-    payload: QuestOccurrencePayload,
-    authorization: str | None = Header(default=None)
-):
-    check_frontend_token(authorization)
-    # Reuse occurrence logic without exposing the long-lived API key.
-    action = payload.action
-    if action not in ("skip", "tomorrow", "move", "restore"):
-        raise HTTPException(status_code=400, detail="Invalid occurrence action")
-
-    source_date = date.today()
-    with engine.begin() as c:
-        exists = c.execute(text("SELECT id FROM quests WHERE id=:qid"), {"qid": quest_id}).first()
-        if not exists:
-            raise HTTPException(status_code=404, detail="Quest not found")
-
-        if action == "restore":
-            c.execute(text("""
-                DELETE FROM quest_occurrences
-                WHERE quest_id=:qid AND occurrence_date=:d
-            """), {"qid": quest_id, "d": source_date})
-            return {"success": True, "action": "restore", "quest_id": quest_id}
-
-        if action == "skip":
-            status, target = "skipped", None
-        else:
-            status = "moved"
-            target = source_date + timedelta(days=1) if action == "tomorrow" else payload.target_date
-            if not target:
-                raise HTTPException(status_code=400, detail="target_date required")
-            if target <= source_date:
-                raise HTTPException(status_code=400, detail="target_date must be in the future")
-
-        c.execute(text("""
-            INSERT INTO quest_occurrences
-                (quest_id, occurrence_date, status, moved_to, note)
-            VALUES (:qid,:d,:status,:target,:note)
-            ON DUPLICATE KEY UPDATE
-                status=VALUES(status),moved_to=VALUES(moved_to),note=VALUES(note)
-        """), {
-            "qid": quest_id, "d": source_date, "status": status,
-            "target": target, "note": payload.note
-        })
-    return {"success": True, "action": action, "quest_id": quest_id,
-            "target_date": target.isoformat() if target else None}
-
-
-
-@app.post("/frontend/quests/{quest_id}/complete")
-def frontend_complete_quest(
-    quest_id: int,
-    payload: CompleteQuest,
-    authorization: str | None = Header(default=None)
-):
-    check_frontend_token(authorization)
-
-    with engine.begin() as c:
-        quest = c.execute(text("""
-            SELECT id,name,quest_type,xp_mode,fixed_xp,
-                   estimated_minutes,kbr,frequency_days
-            FROM quests
-            WHERE id=:qid AND active=1
-        """), {"qid": quest_id}).mappings().first()
-
-        if not quest:
-            raise HTTPException(status_code=404, detail="Quest not found")
-
-        existing = c.execute(text("""
-            SELECT id,xp_awarded,willpower_xp
-            FROM quest_completions
-            WHERE quest_id=:qid AND DATE(completed_at)=CURDATE()
-            ORDER BY id DESC LIMIT 1
-        """), {"qid": quest_id}).mappings().first()
-
-        if existing:
-            return {
-                "success": True,
-                "already_completed": True,
-                "quest_id": quest_id,
-                "xp": int(existing["xp_awarded"] or 0),
-                "willpower_xp": int(existing["willpower_xp"] or 0),
-            }
-
-        xp = calculate_quest_xp(quest)
-        wp = (15 if int(quest["kbr"] or 0) >= 5 else 10) if payload.overcome else 0
-
-        result = c.execute(text("""
-            INSERT INTO quest_completions
-            (quest_id,completed_at,xp_awarded,willpower_xp,kbr_at_completion)
-            VALUES(:qid,NOW(),:xp,:wp,:kbr)
-        """), {"qid": quest_id, "xp": xp, "wp": wp, "kbr": quest["kbr"]})
-
-        completion_id = result.lastrowid
-
-        if xp:
-            c.execute(text("""
-                INSERT INTO xp_ledger
-                (amount,xp_type,source_type,source_id,description)
-                VALUES(:amount,'normal','quest_completion',:sid,:description)
-            """), {"amount": xp, "sid": completion_id, "description": quest["name"]})
-
-        if wp:
-            c.execute(text("""
-                INSERT INTO xp_ledger
-                (amount,xp_type,source_type,source_id,description)
-                VALUES(:amount,'willpower','quest_completion',:sid,:description)
-            """), {"amount": wp, "sid": completion_id, "description": f"Overcome: {quest['name']}"})
-
-    return {
-        "success": True,
-        "already_completed": False,
-        "quest_id": quest_id,
-        "xp": xp,
-        "willpower_xp": wp,
-    }
-
 @app.get("/health")
 def health():
     with engine.connect() as c:
@@ -1909,7 +1746,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.5.2",
+        "version": "1.5.3",
         "schema_version": schema_version,
     }
 

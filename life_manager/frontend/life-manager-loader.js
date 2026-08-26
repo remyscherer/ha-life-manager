@@ -18,11 +18,6 @@
       throw new Error("Ungültiges Life-Manager-Manifest");
     }
 
-    window.LIFE_MANAGER_RUNTIME_CONFIG = {
-      api_url: String(manifest.api_url || "").replace(/\/$/, ""),
-      action_token: String(manifest.action_token || "")
-    };
-
     console.info(`Life Manager loader: loading frontend ${version}`);
 
     await import(`${file}?v=${encodeURIComponent(version)}`);

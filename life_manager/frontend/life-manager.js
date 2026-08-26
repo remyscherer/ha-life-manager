@@ -1,19 +1,6 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.5.2";
-console.info("Life Manager Frontend v1.5.2 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.5.3";
+console.info("Life Manager Frontend v1.5.3 loaded");
 const LM={
-  apiBase:c=>(c?.api_url||window.LIFE_MANAGER_RUNTIME_CONFIG?.api_url||"http://homeassistant.local:8000").replace(/\/$/,""),
-  actionToken:()=>String(window.LIFE_MANAGER_RUNTIME_CONFIG?.action_token||""),
-  async api(c,path,options={}){
-    const base=LM.apiBase(c);
-    const response=await fetch(base+path,{
-      ...options,
-      headers:{"Content-Type":"application/json",...(options.headers||{})},
-      cache:"no-store"
-    });
-    if(!response.ok)throw new Error(`Life Manager API ${response.status}`);
-    return await response.json();
-  },
-
   dataRoot:e=>{
     const attrs=e?.attributes||{};
     return attrs.data||attrs;
@@ -56,7 +43,6 @@ class LifeManagerCard extends HTMLElement{
       entity:LM.entity(c),
       script:c.script||"script.life_quest_complete",
       occurrence_script:c.occurrence_script||"script.life_quest_occurrence",
-      api_url:c.api_url||null,
       title:c.title||"Life Manager"
     };
     this.render();
@@ -68,10 +54,9 @@ class LifeManagerCard extends HTMLElement{
     if(this._busy.has(id))return;
     this._busy.add(id);this.render();
     try{
-      await LM.api(this._config,`/frontend/quests/${Number(id)}/complete`,{
-        method:"POST",
-        headers:{Authorization:`Bearer ${LM.actionToken()}`},
-        body:JSON.stringify({overcome:Boolean(overcome)})
+      await LM.callScript(this._hass,this._config.script,{
+        quest_id:Number(id),
+        overcome:Boolean(overcome)
       });
       await LM.refresh(this._hass,this._config.entity);
     }catch(e){
@@ -85,10 +70,11 @@ class LifeManagerCard extends HTMLElement{
     if(this._busy.has(id))return;
     this._busy.add(id);this.render();
     try{
-      await LM.api(this._config,`/frontend/quests/${Number(id)}/occurrence`,{
-        method:"POST",
-        headers:{Authorization:`Bearer ${LM.actionToken()}`},
-        body:JSON.stringify({action,target_date:targetDate,note:null})
+      await LM.callScript(this._hass,this._config.occurrence_script,{
+        quest_id:Number(id),
+        action,
+        target_date:targetDate,
+        note:null
       });
       await LM.refresh(this._hass,this._config.entity);
     }catch(e){

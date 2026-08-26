@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.5.2"' life_manager/config.yaml
+          grep -q 'version: "1.5.3"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -90,19 +90,10 @@ jobs:
     grep -q 'ha_bridge_base_url' life_manager/config.yaml
     grep -q '__LIFE_MANAGER_BASE_URL__' life_manager/ha_bridge/life_manager_generated.yaml
 
-      - name: Validate v1.5 standalone migration
-        run: test -f life_manager/migrations/150_standalone_frontend.sql
 
-
-- name: Backend compile gate
-  run: python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
-- name: Validate v1.5.1 hotfix migration
-  run: test -f life_manager/migrations/151_startup_syntax_fix.sql
-
-
-- name: Validate v1.5.2 direct frontend actions
+- name: Validate v1.5.3 restored HA bridge
   run: |
-    test -f life_manager/migrations/152_direct_frontend_actions.sql
-    grep -q 'frontend_api_url' life_manager/config.yaml
+    test -f life_manager/migrations/153_bridge_restore.sql
+    grep -q 'life_manager_bridge_test' life_manager/ha_bridge/life_manager_generated.yaml
+    grep -q 'life_quest_occurrence' life_manager/ha_bridge/life_manager_generated.yaml
     python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
