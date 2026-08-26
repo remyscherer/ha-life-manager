@@ -6,14 +6,11 @@ export MYSQL_DATABASE="$(bashio::config 'mysql_database')"
 export MYSQL_USER="$(bashio::config 'mysql_user')"
 export MYSQL_PASSWORD="$(bashio::config 'mysql_password')"
 export API_KEY="$(bashio::config 'api_key')"
+export HA_BRIDGE_BASE_URL="$(bashio::config 'ha_bridge_base_url')"
 
 
 # Keep Home Assistant-side write actions updateable without asking the user
 # to manually merge YAML into their own Life Manager package.
-#
-# Detect common package directories. Existing directories always win so we
-# never create /config/packages when the installation intentionally uses
-# /config/_packages.
 if [ -d /homeassistant/_packages ]; then
   HA_PACKAGES_DIR="/homeassistant/_packages"
 elif [ -d /homeassistant/packages ]; then
@@ -23,15 +20,18 @@ else
   mkdir -p "${HA_PACKAGES_DIR}"
 fi
 
-cp /ha_bridge/life_manager_generated.yaml \
-  "${HA_PACKAGES_DIR}/life_manager_generated.yaml" || \
+BRIDGE_TARGET="${HA_PACKAGES_DIR}/life_manager_generated.yaml"
+
+sed "s|__LIFE_MANAGER_BASE_URL__|${HA_BRIDGE_BASE_URL%/}|g" \
+  /ha_bridge/life_manager_generated.yaml > "${BRIDGE_TARGET}" || \
   bashio::log.warning "Konnte generierte Home-Assistant-Bridge nicht schreiben."
 
-bashio::log.info "Home-Assistant-Bridge nach ${HA_PACKAGES_DIR}/life_manager_generated.yaml aktualisiert."
+bashio::log.info "Home-Assistant-Bridge: ${BRIDGE_TARGET}"
+bashio::log.info "Home-Assistant-Bridge API URL: ${HA_BRIDGE_BASE_URL%/}"
 
 mkdir -p /homeassistant/www
 
-FRONTEND_VERSION="1.4.2"
+FRONTEND_VERSION="1.4.3"
 FRONTEND_FILE="life-manager-${FRONTEND_VERSION}.js"
 
 cp /frontend/life-manager.js "/homeassistant/www/${FRONTEND_FILE}" || \
@@ -61,5 +61,5 @@ if ! python3 migrate.py; then
   exit 1
 fi
 
-bashio::log.info "Starte Life Manager API v1.4.2"
+bashio::log.info "Starte Life Manager API v1.4.3"
 exec uvicorn main:app --host 0.0.0.0 --port 8000

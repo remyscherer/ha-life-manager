@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.4.2"' life_manager/config.yaml
+          grep -q 'version: "1.4.3"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -82,3 +82,10 @@ jobs:
   run: |
     test -f life_manager/migrations/142_package_path_detection.sql
     grep -q '/homeassistant/_packages' life_manager/run.sh
+
+
+- name: Validate v1.4.3 bridge fix
+  run: |
+    test -f life_manager/migrations/143_bridge_fix.sql
+    grep -q 'ha_bridge_base_url' life_manager/config.yaml
+    grep -q '__LIFE_MANAGER_BASE_URL__' life_manager/ha_bridge/life_manager_generated.yaml

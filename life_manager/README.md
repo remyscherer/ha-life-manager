@@ -1,4 +1,4 @@
-# Life Manager v1.4.2
+# Life Manager v1.4.3
 
 ## Neu
 
@@ -35,7 +35,7 @@ Der API-Key bleibt ausschließlich in `secrets.yaml`.
 1. Add-on stoppen.
 2. Dateien ersetzen.
 3. Add-on neu bauen.
-4. `/health` muss Version `1.4.2` liefern.
+4. `/health` muss Version `1.4.3` liefern.
 5. Frontend-Ressource auf `/local/life-manager.js?v=070` ändern.
 6. `examples/life_manager_package.yaml` übernehmen/abgleichen.
 7. YAML-Konfiguration prüfen.
@@ -65,14 +65,14 @@ update_script: script.life_quest_update
 toggle_script: script.life_quest_toggle
 ```
 
-## v1.4.2 repository cleanup
+## v1.4.3 repository cleanup
 
 - Example configuration no longer contains a personal LAN IP.
 - Repository ships with a basic GitHub Actions validation workflow.
 - Repository metadata is included at the repository root.
 
 
-## v1.4.2 Quest Manager repair
+## v1.4.3 Quest Manager repair
 
 - Quest creation payload uses Home Assistant's `to_json` filter.
 - New inline Quest Editor replaces prompt dialogs.
@@ -82,15 +82,15 @@ toggle_script: script.life_quest_toggle
 - API writes create/update events to the add-on log.
 
 
-## v1.4.2 Frontend refresh fix
+## v1.4.3 Frontend refresh fix
 
 - Schreibaktionen warten bevorzugt auf den direkten Home-Assistant-Script-Service.
 - Fallback auf `script.turn_on` bleibt erhalten.
 - Nach Schreibaktionen wird der REST-Sensor mehrfach aktualisiert.
-- Der Quest Manager zeigt unten `Frontend v1.4.2`, damit Cache-Probleme sofort erkennbar sind.
+- Der Quest Manager zeigt unten `Frontend v1.4.3`, damit Cache-Probleme sofort erkennbar sind.
 
 
-## v1.4.2 Achievements, Boss Fights & Streaks
+## v1.4.3 Achievements, Boss Fights & Streaks
 
 - Achievements werden automatisch aus bestehenden Daten berechnet und freigeschaltet.
 - Neue Achievement Card: `custom:life-manager-achievements-card`
@@ -101,7 +101,7 @@ toggle_script: script.life_quest_toggle
 - Heute offene geplante Aufgaben brechen die Streak nicht sofort.
 
 
-## v1.4.2 Reward System
+## v1.4.3 Reward System
 
 - Reward Manager: Rewards direkt in Home Assistant anlegen, bearbeiten und deaktivieren.
 - Coin History Card mit den letzten 20 Coin-Bewegungen.
@@ -110,7 +110,7 @@ toggle_script: script.life_quest_toggle
 - Reward Shop zeigt weiterhin nur aktive Rewards als kaufbar an.
 
 
-## v1.4.2 Automation & Polish
+## v1.4.3 Automation & Polish
 
 - Datenbankmigrationen laufen automatisch vor dem API-Start.
 - `schema_migrations` protokolliert bereits angewendete Migrationen.
@@ -120,7 +120,7 @@ toggle_script: script.life_quest_toggle
 - Manuelles Ausführen von SQL-Migrationen ist ab dieser Version nicht mehr nötig.
 
 
-## v1.4.2 Planner
+## v1.4.3 Planner
 
 Life Manager now contains a deterministic planning engine.
 
@@ -170,12 +170,12 @@ entity: sensor.life_manager
 title: Wochenrückblick
 ```
 
-The planner is intentionally rule-based in v1.4.2 so every recommendation remains
+The planner is intentionally rule-based in v1.4.3 so every recommendation remains
 explainable. An optional AI layer can be added later without replacing the
 deterministic core.
 
 
-## v1.4.2 Planner Today Fix
+## v1.4.3 Planner Today Fix
 
 - Planner candidates now come directly from `fetch_today()`.
 - Every open quest visible in the Today card is therefore eligible for planning.
@@ -185,13 +185,13 @@ deterministic core.
 - Planner scoring still uses KBR, XP, duration, overdue state, training and Boss Fight status.
 
 
-## v1.4.2 Stable Home Assistant data transport
+## v1.4.3 Stable Home Assistant data transport
 
 Home Assistant previously had to list every `/dashboard` section separately in
 `json_attributes`. That meant new features such as `planner` or `weekly_review`
 required a manual package change.
 
-From v1.4.2 onward `/dashboard` also exposes the complete response under:
+From v1.4.3 onward `/dashboard` also exposes the complete response under:
 
 `data`
 
@@ -210,13 +210,13 @@ compatible with the old flat sensor attributes.
 
 Replace the existing Life Manager `rest:` sensor block once with:
 
-`examples/life_manager_sensor_v1.4.2.yaml`
+`examples/life_manager_sensor_v1.4.3.yaml`
 
 After that, adding new dashboard sections no longer requires modifying
 `json_attributes`.
 
 
-## v1.4.2 Planner 2.0
+## v1.4.3 Planner 2.0
 
 - Quests now have `priority`: low / normal / high / critical.
 - Quests can have an optional `due_date`.
@@ -226,7 +226,7 @@ After that, adding new dashboard sections no longer requires modifying
 - Recommendation reasons now explicitly mention priority, due/overdue state and time fit.
 
 
-## v1.4.2 Frontend Auto-Update
+## v1.4.3 Frontend Auto-Update
 
 From this version onward the Lovelace resource should be registered permanently as:
 
@@ -255,13 +255,13 @@ After this, future Life Manager updates should no longer require manually
 editing the frontend resource URL.
 
 
-## v1.4.2 Stable frontend loader
+## v1.4.3 Stable frontend loader
 
 The previous auto-update approach could not solve a browser that had already
 cached an old `/local/life-manager.js`: the version-check code itself lived
 inside the cached file.
 
-v1.4.2 uses a permanent loader instead.
+v1.4.3 uses a permanent loader instead.
 
 ### One-time Lovelace change
 
@@ -272,7 +272,7 @@ Remove the old Life Manager JavaScript resource and add:
 The loader fetches `life-manager-manifest.json` with `cache: no-store` and then
 loads the version-specific bundle, for example:
 
-`/local/life-manager-1.4.2.js?v=1.4.2`
+`/local/life-manager-1.4.3.js?v=1.4.3`
 
 Future add-on updates write a new versioned bundle and update the manifest.
 The Lovelace resource URL no longer has to change.
@@ -281,7 +281,7 @@ For compatibility, `/local/life-manager.js` is still overwritten at every
 add-on start, but it should no longer be registered as the Lovelace resource.
 
 
-## v1.4.2 Day & Week Planning
+## v1.4.3 Day & Week Planning
 
 ### Day Plan
 
@@ -319,7 +319,7 @@ The stable frontend loader introduced in v1.1.2 remains in place. No Lovelace
 resource version change is required.
 
 
-## v1.4.2 Scheduling & Occurrences
+## v1.4.3 Scheduling & Occurrences
 
 A quest's base schedule is no longer modified when real life changes one occurrence.
 
@@ -356,7 +356,7 @@ Payload examples:
 The dashboard's `today`, Planner and Day Plan use the effective occurrence-aware day.
 
 
-## v1.4.2 Scheduling UI + Analytics
+## v1.4.3 Scheduling UI + Analytics
 
 ### Today actions
 
@@ -393,7 +393,7 @@ title: Insights
 ```
 
 
-## v1.4.2 Generated Home Assistant Bridge
+## v1.4.3 Generated Home Assistant Bridge
 
 Life Manager now writes a small generated package at add-on startup:
 
@@ -409,14 +409,14 @@ The user's existing `life_manager.yaml` is not overwritten.
 ### Important
 
 Home Assistant loads package YAML during Core configuration loading. After the
-first update to v1.4.2, perform one Home Assistant Core restart if the generated
+first update to v1.4.3, perform one Home Assistant Core restart if the generated
 script is not visible immediately. Future changes to the generated bridge file
 can be shipped by the add-on without manually merging YAML.
 
 The generated bridge uses the existing `life_manager_api_key` secret.
 
 
-## v1.4.2 Home Assistant package path detection
+## v1.4.3 Home Assistant package path detection
 
 The generated Home Assistant bridge now detects the package directory at
 add-on startup.
@@ -431,3 +431,33 @@ This prevents Life Manager from creating and using the wrong package directory
 on Home Assistant installations configured with `_packages`.
 
 The detected path is written to the add-on log during startup.
+
+
+## v1.4.3 Home Assistant bridge fix
+
+The generated bridge now uses valid Home Assistant script field definitions and
+a configurable API base URL.
+
+New add-on option:
+
+`ha_bridge_base_url`
+
+Default:
+
+`http://homeassistant.local:8000`
+
+If your Home Assistant host does not resolve `homeassistant.local`, set this to
+the same reachable URL you already use for the Life Manager REST sensor, for
+example:
+
+`http://192.168.0.74:8000`
+
+At add-on startup the generated bridge is rendered with this URL and written to
+the detected package directory.
+
+The add-on log prints both:
+- generated package path
+- bridge API URL
+
+After the first update, restart Home Assistant Core once so the generated
+script is loaded.
