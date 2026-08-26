@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.5.0";
-console.info("Life Manager Frontend v1.5.0 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.5.1";
+console.info("Life Manager Frontend v1.5.1 loaded");
 const LM={
   apiBase:c=>(c?.api_url||localStorage.getItem("life_manager_api_url")||"http://homeassistant.local:8000").replace(/\/$/,""),
   async api(c,path,options={}){

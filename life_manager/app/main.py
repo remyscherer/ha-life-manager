@@ -22,8 +22,29 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.5.0")
+app = FastAPI(title="Life Manager", version="1.5.1")
 logger = logging.getLogger("life_manager")
+
+
+_frontend_sessions: dict[str, float] = {}
+_FRONTEND_SESSION_TTL = 3600
+
+
+def create_frontend_session():
+    token = secrets.token_urlsafe(32)
+    _frontend_sessions[token] = time.time() + _FRONTEND_SESSION_TTL
+    return token
+
+
+def check_frontend_token(authorization: str | None):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Frontend session required")
+    token = authorization[7:]
+    expires = _frontend_sessions.get(token)
+    if not expires or expires < time.time():
+        _frontend_sessions.pop(token, None)
+        raise HTTPException(status_code=401, detail="Frontend session expired")
+    return token
 
 
 class CompleteQuest(BaseModel):
@@ -1149,7 +1170,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.5.0",
+            "version": "1.5.1",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1254,28 +1275,7 @@ def change_quest_occurrence(
     quest_id: int,
     payload: QuestOccurrencePayload,
     x_api_key: str | None = Header(default=None)
-)
-
-_frontend_sessions: dict[str, float] = {}
-_FRONTEND_SESSION_TTL = 3600
-
-
-def create_frontend_session():
-    token = secrets.token_urlsafe(32)
-    _frontend_sessions[token] = time.time() + _FRONTEND_SESSION_TTL
-    return token
-
-
-def check_frontend_token(authorization: str | None):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Frontend session required")
-    token = authorization[7:]
-    expires = _frontend_sessions.get(token)
-    if not expires or expires < time.time():
-        _frontend_sessions.pop(token, None)
-        raise HTTPException(status_code=401, detail="Frontend session expired")
-    return token
-:
+):
     check_api_key(x_api_key)
 
     action = payload.action
@@ -1764,7 +1764,7 @@ def frontend_session(x_api_key: str | None = Header(default=None)):
     return {
         "token": create_frontend_session(),
         "expires_in": _FRONTEND_SESSION_TTL,
-        "version": "1.5.0",
+        "version": "1.5.1",
     }
 
 
@@ -1777,18 +1777,18 @@ def frontend_dashboard():
             "player": fetch_player(c),
             "training": fetch_training_week(c),
             "week": fetch_week(c),
-            "streaks": fetch_streaks(c),
+            "streaks": fetch_streaks_v2(c),
             "planner": fetch_planner(c),
             "weekly_review": fetch_weekly_review(c),
             "weekly_goals": fetch_weekly_goals(c),
             "day_plan": fetch_day_plan(c),
             "analytics": fetch_analytics(c),
             "rewards": fetch_rewards(c),
-            "achievements": fetch_achievements(c),
+            "achievements": evaluate_achievements(c),
             "boss_fights": fetch_boss_fights(c),
             "quest_manager": fetch_quest_manager(c),
         }
-        return {"data": payload, "version": "1.5.0"}
+        return {"data": payload, "version": "1.5.1"}
 
 
 @app.post("/frontend/quests/{quest_id}/occurrence")
@@ -1853,7 +1853,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.5.0",
+        "version": "1.5.1",
         "schema_version": schema_version,
     }
 
