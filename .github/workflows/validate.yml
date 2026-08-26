@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.5.6"' life_manager/config.yaml
+          grep -q 'version: "1.5.8"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -118,4 +118,19 @@ jobs:
   run: |
     test -f life_manager/migrations/156_occurrence_entity_rename.sql
     grep -q 'life_manager_quest_occurrence' life_manager/ha_bridge/life_manager_generated.yaml
+    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
+
+
+- name: Validate v1.5.7 occurrence payload fix
+  run: |
+    test -f life_manager/migrations/157_occurrence_payload_fix.sql
+    grep -q 'target_date: null' life_manager/ha_bridge/life_manager_generated.yaml
+    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
+
+
+- name: Validate v1.5.8 complete dashboard
+  run: |
+    test -f life_manager/migrations/158_dashboard_card.sql
+    test -f life_manager/examples/dashboard_single_card.yaml
+    grep -q 'life-manager-dashboard-card' life_manager/frontend/life-manager.js
     python -m py_compile life_manager/app/main.py life_manager/app/migrate.py

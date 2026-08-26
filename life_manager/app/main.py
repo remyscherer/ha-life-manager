@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.5.6")
+app = FastAPI(title="Life Manager", version="1.5.8")
 logger = logging.getLogger("life_manager")
 
 
@@ -61,7 +61,7 @@ class WeeklyGoalPayload(BaseModel):
 
 class QuestOccurrencePayload(BaseModel):
     action: str
-    target_date: date | None = None
+    target_date: date | str | None = None
     note: str | None = None
 
 
@@ -1147,7 +1147,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.5.6",
+            "version": "1.5.8",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1259,6 +1259,17 @@ def change_quest_occurrence(
     if action not in ("skip", "tomorrow", "move", "restore"):
         raise HTTPException(status_code=400, detail="Invalid occurrence action")
 
+    target_date = payload.target_date
+    if isinstance(target_date, str):
+        raw_target = target_date.strip()
+        if raw_target.lower() in ("", "none", "null"):
+            target_date = None
+        else:
+            try:
+                target_date = date.fromisoformat(raw_target)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid target_date")
+
     source_date = date.today()
 
     with engine.begin() as c:
@@ -1283,7 +1294,7 @@ def change_quest_occurrence(
             target = (
                 source_date + timedelta(days=1)
                 if action == "tomorrow"
-                else payload.target_date
+                else target_date
             )
             if not target:
                 raise HTTPException(status_code=400, detail="target_date required")
@@ -1746,7 +1757,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.5.6",
+        "version": "1.5.8",
         "schema_version": schema_version,
     }
 

@@ -1,0 +1,11 @@
+# Life Manager complete dashboard.
+# Only this one Lovelace card is required.
+
+type: custom:life-manager-dashboard-card
+entity: sensor.life_manager
+title: Life Manager
+
+# Optional overrides:
+# complete_script: script.life_quest_complete
+# occurrence_script: script.life_manager_quest_occurrence
+# reward_script: script.life_reward_purchase

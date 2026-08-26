@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.5.6";
-console.info("Life Manager Frontend v1.5.6 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.5.8";
+console.info("Life Manager Frontend v1.5.8 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -1126,6 +1126,414 @@ class LifeManagerAnalyticsCard extends HTMLElement{
   }
 }
 
+
+class LifeManagerDashboardCard extends HTMLElement{
+  constructor(){
+    super();
+    this.attachShadow({mode:"open"});
+    this._tab="today";
+  }
+
+  setConfig(c){
+    this._config={
+      entity:LM.entity(c),
+      title:c.title||"Life Manager",
+      complete_script:c.complete_script||"script.life_quest_complete",
+      occurrence_script:c.occurrence_script||"script.life_manager_quest_occurrence",
+      reward_script:c.reward_script||"script.life_reward_purchase"
+    };
+    this.render();
+  }
+
+  set hass(h){
+    this._hass=h;
+    this.render();
+  }
+
+  root(){
+    const e=this._hass?.states?.[this._config.entity];
+    return e ? LM.dataRoot(e) : null;
+  }
+
+  async complete(id,overcome=false){
+    try{
+      await LM.callScript(this._hass,this._config.complete_script,{
+        quest_id:Number(id),
+        overcome:Boolean(overcome)
+      });
+      await LM.refresh(this._hass,this._config.entity);
+    }catch(e){
+      alert(e?.message||"Quest konnte nicht abgeschlossen werden.");
+    }
+  }
+
+  async occurrence(id,action,targetDate=null){
+    try{
+      await LM.callScript(this._hass,this._config.occurrence_script,{
+        quest_id:Number(id),
+        action,
+        target_date:targetDate,
+        note:null
+      });
+      await LM.refresh(this._hass,this._config.entity);
+    }catch(e){
+      alert(e?.message||"Quest konnte nicht geändert werden.");
+    }
+  }
+
+  async moveDate(id){
+    const target=prompt("Auf welches Datum verschieben? (YYYY-MM-DD)");
+    if(!target)return;
+    await this.occurrence(id,"move",target);
+  }
+
+  async buyReward(id){
+    try{
+      await LM.callScript(this._hass,this._config.reward_script,{
+        reward_id:Number(id),
+        quantity:1
+      });
+      await LM.refresh(this._hass,this._config.entity);
+    }catch(e){
+      alert(e?.message||"Reward konnte nicht gekauft werden.");
+    }
+  }
+
+  tabButton(id,label,icon){
+    return `<button type="button" class="tab ${this._tab===id?"active":""}" data-tab="${id}">
+      <ha-icon icon="${icon}"></ha-icon><span>${label}</span>
+    </button>`;
+  }
+
+  renderToday(d){
+    const today=d.today||{};
+    const planner=d.planner||{};
+    const dayPlan=d.day_plan||{};
+    const training=d.training||{};
+    const quests=Array.isArray(today.quests)?today.quests:[];
+    const plan=Array.isArray(dayPlan.plan)?dayPlan.plan:[];
+    const recommendation=planner.recommendation||null;
+
+    return `
+      <div class="hero-grid">
+        <section class="panel hero">
+          <div class="eyebrow">HEUTE</div>
+          <div class="hero-line">
+            <div>
+              <div class="big">${Number(today.progress_percent||0)}%</div>
+              <div class="muted">${Number(today.completed_count||0)}/${Number(today.quest_count||0)} Quests erledigt</div>
+            </div>
+            <div class="coin">${Number(today.projected_coins||0)} 🪙</div>
+          </div>
+          <div class="bar"><div class="fill" style="width:${Math.min(100,Number(today.progress_percent||0))}%"></div></div>
+          <div class="metrics">
+            <div><b>${Number(today.xp_today||0)}</b><small>XP heute</small></div>
+            <div><b>${Number(today.possible_xp||0)}</b><small>möglich</small></div>
+            <div><b>${Number(today.willpower_xp_today||0)}</b><small>Willpower</small></div>
+            <div><b>${Number(today.coin_balance||0)}</b><small>Coins</small></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="eyebrow">🧭 NÄCHSTER SCHRITT</div>
+          ${recommendation?`
+            <div class="recommend-name">${recommendation.boss_fight?"⚔️ ":""}${LM.esc(recommendation.name)}</div>
+            <div class="muted">${LM.esc(recommendation.category||"")} · ${Number(recommendation.estimated_minutes||0)} Min · +${Number(recommendation.xp||0)} XP</div>
+            <div class="reason">${LM.esc(recommendation.reason||"Heute sinnvoll")}</div>
+          `:'<div class="empty">🎉 Aktuell nichts Dringendes offen.</div>'}
+        </section>
+      </div>
+
+      <div class="content-grid">
+        <section class="panel span2">
+          <div class="section-head"><div><div class="eyebrow">🎯 QUESTS</div><h3>Heute offen</h3></div></div>
+          ${quests.map(q=>`
+            <div class="quest ${q.completed?"done":""}">
+              <div class="quest-main">
+                <b>${LM.esc(q.name)}</b>
+                <small>${LM.esc(q.category||"")} · +${Number(q.xp||0)} XP${q.moved_from?` · ↪ von ${LM.esc(q.moved_from)}`:""}</small>
+              </div>
+              ${q.completed?`<span class="done-mark">✓</span>`:`
+                <div class="quest-actions">
+                  <button type="button" data-complete="${q.id}" title="Erledigt">✓</button>
+                  <button type="button" class="secondary" data-overcome="${q.id}" title="Kein Bock überwunden">🔥</button>
+                  <button type="button" class="secondary" data-tomorrow="${q.id}" title="Auf morgen">→</button>
+                  <button type="button" class="secondary" data-date="${q.id}" title="Auf Datum">📅</button>
+                  <button type="button" class="secondary" data-skip="${q.id}" title="Heute auslassen">⏭</button>
+                </div>
+              `}
+            </div>
+          `).join("")||'<div class="empty">Keine Quests für heute.</div>'}
+        </section>
+
+        <section class="panel">
+          <div class="eyebrow">🗓️ TAGESPLAN</div>
+          ${plan.map(x=>`
+            <div class="compact-row">
+              <span class="rank">${Number(x.order||0)}</span>
+              <div><b>${LM.esc(x.name)}</b><small>${LM.esc(x.reason||"")}</small></div>
+              <span>+${Number(x.xp||0)}</span>
+            </div>
+          `).join("")||'<div class="empty">Kein weiterer Tagesplan.</div>'}
+        </section>
+
+        <section class="panel">
+          <div class="eyebrow">🏋️ TRAINING</div>
+          <div class="big small-big">${Number(training.completed_count||0)}/${Number(training.planned_count||0)}</div>
+          <div class="muted">Trainings diese Woche</div>
+          ${(training.trainings||[]).slice(0,5).map(x=>`
+            <div class="mini-row"><span>${x.completed?"✓":"○"} ${LM.esc(x.name||"Training")}</span></div>
+          `).join("")}
+        </section>
+      </div>
+    `;
+  }
+
+  renderProgress(d){
+    const week=d.week||{};
+    const review=d.weekly_review||{};
+    const achievements=d.achievements||{};
+    const streaks=(d.streaks||{}).streaks||[];
+    const analytics=d.analytics||{};
+    const bosses=d.boss_fights||{};
+    const insights=Array.isArray(analytics.insights)?analytics.insights:[];
+
+    return `
+      <div class="metrics top-metrics">
+        <div class="panel metric"><b>${Number(week.xp_total||0)}</b><small>XP diese Woche</small></div>
+        <div class="panel metric"><b>${Number(week.completed_total||0)}</b><small>Quests</small></div>
+        <div class="panel metric"><b>${Number(review.active_days||0)}</b><small>aktive Tage</small></div>
+        <div class="panel metric"><b>${Number(bosses.completed_total||0)}</b><small>Boss Fights</small></div>
+      </div>
+
+      <div class="content-grid">
+        <section class="panel">
+          <div class="eyebrow">🏆 ACHIEVEMENTS</div>
+          <div class="big small-big">${Number(achievements.unlocked_count||0)}/${Number(achievements.total_count||0)}</div>
+          ${(achievements.achievements||[]).slice(0,6).map(x=>`
+            <div class="mini-row ${x.unlocked?"":"dim"}">
+              <span>${x.unlocked?"✅":"🔒"} ${LM.esc(x.name)}</span><b>${Number(x.current||0)}/${Number(x.target||0)}</b>
+            </div>
+          `).join("")}
+        </section>
+
+        <section class="panel">
+          <div class="eyebrow">🔥 STREAKS</div>
+          ${streaks.slice(0,7).map(x=>`
+            <div class="mini-row"><span>${LM.esc(x.name)}</span><b>🔥 ${Number(x.current_streak||0)}</b></div>
+          `).join("")||'<div class="empty">Noch keine Streaks.</div>'}
+        </section>
+
+        <section class="panel span2">
+          <div class="eyebrow">📈 INSIGHTS · 30 TAGE</div>
+          <div class="metrics">
+            <div><b>${Number(analytics.completion_total||0)}</b><small>Abschlüsse</small></div>
+            <div><b>${Number(analytics.training_total||0)}</b><small>Trainings</small></div>
+            <div><b>${Number(analytics.moved_total||0)}</b><small>verschoben</small></div>
+            <div><b>${Number(analytics.skipped_total||0)}</b><small>ausgelassen</small></div>
+          </div>
+          ${insights.map(x=>`<div class="insight">• ${LM.esc(x)}</div>`).join("")||'<div class="empty">Noch zu wenig Daten für Insights.</div>'}
+        </section>
+      </div>
+    `;
+  }
+
+  renderRewards(d){
+    const rewards=d.rewards||{};
+    const items=Array.isArray(rewards.rewards)?rewards.rewards.filter(x=>x.active):[];
+    const goals=Array.isArray(rewards.savings_goals)?rewards.savings_goals:[];
+    const history=Array.isArray(rewards.coin_history)?rewards.coin_history.slice(0,8):[];
+
+    return `
+      <div class="hero-grid">
+        <section class="panel hero">
+          <div class="eyebrow">🪙 WALLET</div>
+          <div class="big">${Number(rewards.coin_balance||0)} 🪙</div>
+          <div class="muted">aktueller Kontostand</div>
+        </section>
+        <section class="panel">
+          <div class="eyebrow">🎯 SPARZIELE</div>
+          ${goals.map(g=>`
+            <div class="goal">
+              <div class="goal-head"><b>${LM.esc(g.name)}</b><span>${Number(g.current_coins||0)}/${Number(g.target_coins||0)}</span></div>
+              <div class="bar"><div class="fill" style="width:${Math.min(100,Number(g.progress_percent||0))}%"></div></div>
+            </div>
+          `).join("")||'<div class="empty">Keine aktiven Sparziele.</div>'}
+        </section>
+      </div>
+
+      <div class="content-grid">
+        <section class="panel span2">
+          <div class="eyebrow">🎁 REWARD SHOP</div>
+          <div class="reward-grid">
+            ${items.map(r=>`
+              <div class="reward">
+                <div><b>${LM.esc(r.name)}</b><small>${LM.esc(r.description||"")}</small></div>
+                <button type="button" data-buy="${r.id}" ${r.can_afford?"":"disabled"}>${Number(r.cost||0)} 🪙</button>
+              </div>
+            `).join("")||'<div class="empty">Keine aktiven Rewards.</div>'}
+          </div>
+        </section>
+
+        <section class="panel span2">
+          <div class="eyebrow">📜 COIN HISTORY</div>
+          ${history.map(x=>`
+            <div class="mini-row">
+              <span>${LM.esc(x.reason||"")}</span>
+              <b class="${Number(x.amount)>=0?"positive":"negative"}">${Number(x.amount)>=0?"+":""}${Number(x.amount)} 🪙</b>
+            </div>
+          `).join("")||'<div class="empty">Noch keine Coin-Bewegungen.</div>'}
+        </section>
+      </div>
+    `;
+  }
+
+  renderSystem(d){
+    const player=d.player||{};
+    const weekly=d.weekly_goals||{};
+    const qm=d.quest_manager||{};
+    const cats=Array.isArray(qm.categories)?qm.categories:[];
+    const quests=Array.isArray(qm.quests)?qm.quests:[];
+
+    return `
+      <div class="metrics top-metrics">
+        <div class="panel metric"><b>Lv. ${Number(player.level||0)}</b><small>Level</small></div>
+        <div class="panel metric"><b>${Number(player.total_xp||0)}</b><small>Gesamt-XP</small></div>
+        <div class="panel metric"><b>${Number(player.willpower_xp||0)}</b><small>Willpower XP</small></div>
+        <div class="panel metric"><b>${Number(player.total_completions||0)}</b><small>Abschlüsse</small></div>
+      </div>
+      <div class="content-grid">
+        <section class="panel">
+          <div class="eyebrow">🎯 WOCHENZIELE</div>
+          ${(weekly.goals||[]).map(g=>`
+            <div class="goal">
+              <div class="goal-head"><b>${g.completed?"✅ ":""}${LM.esc(g.name)}</b><span>${Number(g.current_count||0)}/${Number(g.target_count||0)}</span></div>
+              <div class="bar"><div class="fill" style="width:${Math.min(100,Number(g.progress_percent||0))}%"></div></div>
+            </div>
+          `).join("")||'<div class="empty">Keine Wochenziele.</div>'}
+        </section>
+
+        <section class="panel">
+          <div class="eyebrow">⚙️ SYSTEM</div>
+          <div class="mini-row"><span>Aktive Quests</span><b>${quests.filter(x=>x.active).length}</b></div>
+          <div class="mini-row"><span>Kategorien</span><b>${cats.length}</b></div>
+          <div class="mini-row"><span>Frontend</span><b>v1.5.8</b></div>
+          <div class="muted info-note">Für das Bearbeiten von Quests und Rewards bleiben die separaten Manager-Karten verfügbar.</div>
+        </section>
+      </div>
+    `;
+  }
+
+  render(){
+    if(!this._config)return;
+    const entity=this._hass?.states?.[this._config.entity];
+    if(!entity){
+      this.shadowRoot.innerHTML=LM.missing(this._config.entity);
+      return;
+    }
+
+    const d=LM.dataRoot(entity);
+    let body="";
+    if(this._tab==="today")body=this.renderToday(d);
+    else if(this._tab==="progress")body=this.renderProgress(d);
+    else if(this._tab==="rewards")body=this.renderRewards(d);
+    else body=this.renderSystem(d);
+
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        :host{display:block}
+        ha-card{padding:16px}
+        .dashboard-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+        .dashboard-head h2{margin:2px 0}
+        .version{font-size:10px;opacity:.4}
+        .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px}
+        .tab{display:flex;align-items:center;justify-content:center;gap:6px;background:var(--secondary-background-color);color:var(--primary-text-color);min-height:42px}
+        .tab.active{background:var(--primary-color);color:white}
+        .tab ha-icon{--mdc-icon-size:18px}
+        .hero-grid,.content-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
+        .panel{background:var(--secondary-background-color);border-radius:14px;padding:14px;min-width:0}
+        .hero{background:var(--secondary-background-color)}
+        .span2{grid-column:1/-1}
+        .eyebrow{font-size:11px;font-weight:800;letter-spacing:.06em;opacity:.6}
+        .big{font-size:34px;font-weight:850;line-height:1.05;margin-top:5px}
+        .small-big{font-size:28px}
+        .muted{font-size:12px;opacity:.65}
+        .hero-line,.goal-head,.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center}
+        .coin{font-size:20px;font-weight:800}
+        .bar{height:8px;background:var(--divider-color);border-radius:999px;overflow:hidden;margin-top:10px}
+        .fill{height:100%;background:var(--primary-color)}
+        .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+        .metrics>div{min-width:0}
+        .metrics b{display:block;font-size:18px}
+        .metrics small{display:block;font-size:10px;opacity:.6}
+        .top-metrics{margin-top:0}
+        .top-metrics .metric{margin:0}
+        .recommend-name{font-size:20px;font-weight:800;margin-top:8px}
+        .reason{font-size:13px;margin-top:10px}
+        h3{margin:2px 0}
+        .quest{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--divider-color)}
+        .quest-main{min-width:0}
+        .quest-main small,.compact-row small,.reward small{display:block;font-size:11px;opacity:.6;margin-top:2px}
+        .quest.done{opacity:.5}
+        .quest-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+        .quest-actions button{min-width:38px}
+        .done-mark{font-size:18px}
+        .compact-row,.mini-row{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:8px 0;border-top:1px solid var(--divider-color)}
+        .mini-row{grid-template-columns:1fr auto}
+        .rank{font-weight:800;opacity:.6}
+        .dim{opacity:.45}
+        .insight{padding:7px 0;border-top:1px solid var(--divider-color);font-size:13px}
+        .goal{margin-top:10px}
+        .reward-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+        .reward{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px;border:1px solid var(--divider-color);border-radius:10px}
+        .positive{color:var(--success-color,#4caf50)}
+        .negative{color:var(--error-color,#f44336)}
+        .empty{font-size:13px;opacity:.6;padding:10px 0}
+        .info-note{margin-top:12px;line-height:1.4}
+        button:disabled{opacity:.4;cursor:not-allowed}
+        @media(max-width:700px){
+          .tabs{grid-template-columns:repeat(2,1fr)}
+          .hero-grid,.content-grid{grid-template-columns:1fr}
+          .span2{grid-column:auto}
+          .metrics{grid-template-columns:repeat(2,1fr)}
+          .top-metrics{grid-template-columns:repeat(2,1fr)}
+          .reward-grid{grid-template-columns:1fr}
+          .quest{align-items:flex-start;flex-direction:column}
+          .quest-actions{width:100%;justify-content:flex-start}
+          .quest-actions button{min-width:44px;min-height:40px}
+        }
+      </style>
+
+      <ha-card>
+        <div class="dashboard-head">
+          <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
+          <div class="version">Frontend v1.5.8</div>
+        </div>
+
+        <div class="tabs">
+          ${this.tabButton("today","Heute","mdi:target")}
+          ${this.tabButton("progress","Fortschritt","mdi:chart-areaspline")}
+          ${this.tabButton("rewards","Münzen","mdi:gold")}
+          ${this.tabButton("system","Übersicht","mdi:view-dashboard")}
+        </div>
+
+        <div class="tab-body">${body}</div>
+      </ha-card>
+    `;
+
+    this.shadowRoot.querySelectorAll("[data-tab]").forEach(b=>{
+      b.onclick=()=>{this._tab=b.dataset.tab;this.render();};
+    });
+    this.shadowRoot.querySelectorAll("[data-complete]").forEach(b=>b.onclick=()=>this.complete(b.dataset.complete,false));
+    this.shadowRoot.querySelectorAll("[data-overcome]").forEach(b=>b.onclick=()=>this.complete(b.dataset.overcome,true));
+    this.shadowRoot.querySelectorAll("[data-tomorrow]").forEach(b=>b.onclick=()=>this.occurrence(b.dataset.tomorrow,"tomorrow"));
+    this.shadowRoot.querySelectorAll("[data-date]").forEach(b=>b.onclick=()=>this.moveDate(b.dataset.date));
+    this.shadowRoot.querySelectorAll("[data-skip]").forEach(b=>b.onclick=()=>this.occurrence(b.dataset.skip,"skip"));
+    this.shadowRoot.querySelectorAll("[data-buy]").forEach(b=>b.onclick=()=>this.buyReward(b.dataset.buy));
+  }
+}
+
 const defs=[
 ["life-manager-card",LifeManagerCard],
 ["life-manager-player-card",LifeManagerPlayerCard],
@@ -1144,6 +1552,7 @@ const defs=[
 ["life-manager-weekly-review-card",LifeManagerWeeklyReviewCard],
 ["life-manager-day-plan-card",LifeManagerDayPlanCard],
 ["life-manager-weekly-goals-card",LifeManagerWeeklyGoalsCard],
-["life-manager-analytics-card",LifeManagerAnalyticsCard]
+["life-manager-analytics-card",LifeManagerAnalyticsCard],
+["life-manager-dashboard-card",LifeManagerDashboardCard]
 ];
 for(const [n,c] of defs){if(!customElements.get(n))customElements.define(n,c);}

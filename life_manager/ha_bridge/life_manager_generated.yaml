@@ -12,8 +12,18 @@ rest_command:
       {{
         {
           "action": action,
-          "target_date": target_date | default(none),
-          "note": note | default(none)
+          "target_date": (
+            target_date
+            if target_date is defined
+               and target_date not in [none, "", "None", "null"]
+            else none
+          ),
+          "note": (
+            note
+            if note is defined
+               and note not in [none, "", "None", "null"]
+            else none
+          )
         } | to_json
       }}
 
@@ -64,9 +74,21 @@ script:
         selector:
           text:
     sequence:
-      - action: rest_command.life_manager_bridge_occurrence
-        data:
-          quest_id: "{{ quest_id | int }}"
-          action: "{{ action }}"
-          target_date: "{{ target_date | default(none) }}"
-          note: "{{ note | default(none) }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ action == 'move' }}"
+            sequence:
+              - action: rest_command.life_manager_bridge_occurrence
+                data:
+                  quest_id: "{{ quest_id | int }}"
+                  action: "{{ action }}"
+                  target_date: "{{ target_date }}"
+                  note: "{{ note | default(none) }}"
+        default:
+          - action: rest_command.life_manager_bridge_occurrence
+            data:
+              quest_id: "{{ quest_id | int }}"
+              action: "{{ action }}"
+              target_date: null
+              note: null
