@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.2.0"' life_manager/config.yaml
+          grep -q 'version: "1.3.0"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -64,3 +64,6 @@ jobs:
 
 - name: Validate v1.2 planning migration
   run: test -f life_manager/migrations/120_weekly_goals.sql
+
+      - name: Validate v1.3 occurrence migration
+        run: test -f life_manager/migrations/130_quest_occurrences.sql

@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.2.0")
+app = FastAPI(title="Life Manager", version="1.3.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -56,6 +56,13 @@ class WeeklyGoalPayload(BaseModel):
     target_count: int = Field(default=1, ge=1, le=100)
     active: bool = True
     sort_order: int = 0
+
+
+
+class QuestOccurrencePayload(BaseModel):
+    action: str
+    target_date: date | None = None
+    note: str | None = None
 
 
 
@@ -935,7 +942,7 @@ def priority_score(priority):
 
 def fetch_planner(connection, max_minutes: int | None = None):
     today_date = date.today()
-    today = fetch_today(connection)
+    today = fetch_today_effective(connection)
 
     today_open = [
         quest
@@ -1140,7 +1147,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.2.0",
+            "version": "1.3.0",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1239,6 +1246,76 @@ def fetch_weekly_review(connection):
 
 
 
+
+@app.post("/quests/{quest_id}/occurrence")
+def change_quest_occurrence(
+    quest_id: int,
+    payload: QuestOccurrencePayload,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    action = payload.action
+    if action not in ("skip", "tomorrow", "move", "restore"):
+        raise HTTPException(status_code=400, detail="Invalid occurrence action")
+
+    source_date = date.today()
+
+    with engine.begin() as c:
+        exists = c.execute(text(
+            "SELECT id FROM quests WHERE id=:qid"
+        ), {"qid": quest_id}).first()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Quest not found")
+
+        if action == "restore":
+            c.execute(text("""
+                DELETE FROM quest_occurrences
+                WHERE quest_id=:qid AND occurrence_date=:d
+            """), {"qid": quest_id, "d": source_date})
+            return {"success": True, "action": "restore", "quest_id": quest_id}
+
+        if action == "skip":
+            status = "skipped"
+            target = None
+        else:
+            status = "moved"
+            target = (
+                source_date + timedelta(days=1)
+                if action == "tomorrow"
+                else payload.target_date
+            )
+            if not target:
+                raise HTTPException(status_code=400, detail="target_date required")
+            if target <= source_date:
+                raise HTTPException(status_code=400, detail="target_date must be in the future")
+
+        c.execute(text("""
+            INSERT INTO quest_occurrences
+                (quest_id, occurrence_date, status, moved_to, note)
+            VALUES
+                (:qid, :d, :status, :target, :note)
+            ON DUPLICATE KEY UPDATE
+                status=VALUES(status),
+                moved_to=VALUES(moved_to),
+                note=VALUES(note)
+        """), {
+            "qid": quest_id,
+            "d": source_date,
+            "status": status,
+            "target": target,
+            "note": payload.note,
+        })
+
+    return {
+        "success": True,
+        "action": action,
+        "quest_id": quest_id,
+        "source_date": source_date.isoformat(),
+        "target_date": target.isoformat() if target else None,
+    }
+
+
 @app.get("/day-plan")
 def day_plan():
     with engine.begin() as c:
@@ -1285,6 +1362,97 @@ def weekly_review():
     with engine.begin() as c:
         return fetch_weekly_review(c)
 
+
+
+
+def occurrence_map(connection, for_date):
+    rows = connection.execute(text("""
+        SELECT quest_id, occurrence_date, status, moved_to, note
+        FROM quest_occurrences
+        WHERE occurrence_date=:d OR moved_to=:d
+    """), {"d": for_date}).mappings().all()
+
+    original = {}
+    moved_in = []
+    for r in rows:
+        if r["occurrence_date"] == for_date:
+            original[int(r["quest_id"])] = r
+        if r["moved_to"] == for_date and r["status"] == "moved":
+            moved_in.append(r)
+    return original, moved_in
+
+
+def apply_occurrences_to_today(connection, today_payload):
+    d = date.fromisoformat(today_payload["date"])
+    original, moved_in = occurrence_map(connection, d)
+
+    quests = []
+    existing_ids = set()
+
+    for q in today_payload["quests"]:
+        qid = int(q["id"])
+        occ = original.get(qid)
+
+        if occ and occ["status"] in ("skipped", "moved"):
+            continue
+
+        q = dict(q)
+        q["occurrence_status"] = "scheduled"
+        q["moved_from"] = None
+        quests.append(q)
+        existing_ids.add(qid)
+
+    # A moved occurrence appears on the target day even if its normal schedule does not.
+    for occ in moved_in:
+        qid = int(occ["quest_id"])
+        if qid in existing_ids:
+            continue
+        row = connection.execute(text("""
+            SELECT q.id,q.name,q.quest_type,q.xp_mode,q.fixed_xp,q.frequency_days,
+                   q.project_factor,q.kbr,c.name AS category,c.icon AS category_icon
+            FROM quests q
+            JOIN categories c ON c.id=q.category_id
+            WHERE q.id=:qid AND q.active=1
+        """), {"qid": qid}).mappings().first()
+        if not row:
+            continue
+
+        completed = connection.execute(text("""
+            SELECT completed_at, willpower_xp
+            FROM quest_completions
+            WHERE quest_id=:qid AND DATE(completed_at)=:d
+            ORDER BY completed_at DESC LIMIT 1
+        """), {"qid": qid, "d": d}).mappings().first()
+
+        quests.append({
+            "id": qid,
+            "name": row["name"],
+            "category": row["category"],
+            "category_icon": row["category_icon"],
+            "quest_type": row["quest_type"],
+            "xp": calculate_quest_xp(row),
+            "completed": bool(completed),
+            "completed_at": completed["completed_at"].isoformat() if completed else None,
+            "willpower_xp": int(completed["willpower_xp"] or 0) if completed else 0,
+            "occurrence_status": "moved",
+            "moved_from": occ["occurrence_date"].isoformat(),
+        })
+
+    today_payload = dict(today_payload)
+    today_payload["quests"] = quests
+    today_payload["quest_count"] = len(quests)
+    today_payload["completed_count"] = sum(1 for q in quests if q["completed"])
+    today_payload["possible_xp"] = sum(int(q["xp"]) for q in quests)
+    today_payload["xp_today"] = sum(int(q["xp"]) for q in quests if q["completed"])
+    today_payload["willpower_xp_today"] = sum(int(q["willpower_xp"]) for q in quests if q["completed"])
+    today_payload["progress_percent"] = round(
+        100 * today_payload["xp_today"] / today_payload["possible_xp"]
+    ) if today_payload["possible_xp"] else 100
+    return today_payload
+
+
+def fetch_today_effective(connection):
+    return apply_occurrences_to_today(connection, fetch_today(connection))
 
 
 def fetch_weekly_goals(connection):
@@ -1356,7 +1524,7 @@ def fetch_weekly_goals(connection):
 def fetch_day_plan(connection):
     planner = fetch_planner(connection)
     weekly_goals = fetch_weekly_goals(connection)
-    today = fetch_today(connection)
+    today = fetch_today_effective(connection)
 
     focus = list(planner.get("focus", []))
 
@@ -1445,7 +1613,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.2.0",
+        "version": "1.3.0",
         "schema_version": schema_version,
     }
 
@@ -1454,7 +1622,7 @@ def health():
 def dashboard():
     with engine.begin() as c:
         payload = {
-            "today": fetch_today(c),
+            "today": fetch_today_effective(c),
             "player": fetch_player(c),
             "training": fetch_training_week(c),
             "week": fetch_week(c),

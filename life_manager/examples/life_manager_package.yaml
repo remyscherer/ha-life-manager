@@ -166,6 +166,22 @@ rest_command:
       }}
 
 
+  life_quest_occurrence:
+    url: "http://HOME_ASSISTANT_IP:8000/quests/{{ quest_id }}/occurrence"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >-
+      {{
+        {
+          "action": action,
+          "target_date": target_date | default(none),
+          "note": note | default(none)
+        } | to_json
+      }}
+
+
 rest:
   - resource: "http://HOME_ASSISTANT_IP:8000/dashboard"
     scan_interval: 60
@@ -367,6 +383,17 @@ script:
           quest_id: "{{ quest_id | default(none) }}"
           target_count: "{{ target_count }}"
           sort_order: "{{ sort_order | default(0) }}"
+
+
+  life_quest_occurrence:
+    alias: Life Manager - Quest verschieben/auslassen
+    sequence:
+      - action: rest_command.life_quest_occurrence
+        data:
+          quest_id: "{{ quest_id }}"
+          action: "{{ action }}"
+          target_date: "{{ target_date | default(none) }}"
+          note: "{{ note | default(none) }}"
 
 
 automation:
