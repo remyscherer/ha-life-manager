@@ -10,6 +10,7 @@ RUN pip3 install --break-system-packages -r /app/requirements.txt
 COPY app /app
 COPY migrations /app/migrations
 COPY frontend /frontend
+COPY ha_bridge /ha_bridge
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
