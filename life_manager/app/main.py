@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.3.0")
+app = FastAPI(title="Life Manager", version="1.4.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -1147,7 +1147,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.3.0",
+            "version": "1.4.0",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1347,6 +1347,12 @@ def create_weekly_goal(
         """), payload.model_dump())
 
     return {"success": True, "goal_id": result.lastrowid}
+
+
+@app.get("/analytics")
+def analytics():
+    with engine.begin() as c:
+        return fetch_analytics(c)
 
 
 @app.get("/planner")
@@ -1600,6 +1606,133 @@ def fetch_day_plan(connection):
     }
 
 
+
+def fetch_analytics(connection):
+    today_date = date.today()
+    start_30 = today_date - timedelta(days=29)
+
+    category_rows = connection.execute(text("""
+        SELECT
+            c.name AS category,
+            COUNT(qc.id) AS completions,
+            COALESCE(SUM(qc.xp_awarded),0) AS xp,
+            COALESCE(SUM(qc.willpower_xp),0) AS willpower_xp
+        FROM categories c
+        LEFT JOIN quests q ON q.category_id=c.id
+        LEFT JOIN quest_completions qc
+          ON qc.quest_id=q.id
+         AND DATE(qc.completed_at) BETWEEN :start AND :end
+        WHERE c.active=1
+        GROUP BY c.id,c.name
+        ORDER BY completions DESC,c.name
+    """), {"start": start_30, "end": today_date}).mappings().all()
+
+    kbr_rows = connection.execute(text("""
+        SELECT
+            COALESCE(kbr_at_completion,0) AS kbr,
+            COUNT(*) AS completions,
+            COALESCE(SUM(willpower_xp),0) AS willpower_xp
+        FROM quest_completions
+        WHERE DATE(completed_at) BETWEEN :start AND :end
+        GROUP BY COALESCE(kbr_at_completion,0)
+        ORDER BY kbr
+    """), {"start": start_30, "end": today_date}).mappings().all()
+
+    daily_rows = connection.execute(text("""
+        SELECT
+            DATE(created_at) AS d,
+            COALESCE(SUM(CASE WHEN xp_type='normal' THEN amount ELSE 0 END),0) AS xp,
+            COALESCE(SUM(CASE WHEN xp_type='willpower' THEN amount ELSE 0 END),0) AS willpower_xp
+        FROM xp_ledger
+        WHERE DATE(created_at) BETWEEN :start AND :end
+        GROUP BY DATE(created_at)
+        ORDER BY d
+    """), {"start": start_30, "end": today_date}).mappings().all()
+
+    completion_total = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_completions
+        WHERE DATE(completed_at) BETWEEN :start AND :end
+    """), {"start": start_30, "end": today_date}).scalar_one())
+
+    training_total = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_completions qc
+        JOIN quests q ON q.id=qc.quest_id
+        WHERE q.quest_type='training'
+          AND DATE(qc.completed_at) BETWEEN :start AND :end
+    """), {"start": start_30, "end": today_date}).scalar_one())
+
+    boss_total = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_completions
+        WHERE COALESCE(kbr_at_completion,0)>=5
+          AND DATE(completed_at) BETWEEN :start AND :end
+    """), {"start": start_30, "end": today_date}).scalar_one())
+
+    skipped_total = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_occurrences
+        WHERE status='skipped'
+          AND occurrence_date BETWEEN :start AND :end
+    """), {"start": start_30, "end": today_date}).scalar_one())
+
+    moved_total = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_occurrences
+        WHERE status='moved'
+          AND occurrence_date BETWEEN :start AND :end
+    """), {"start": start_30, "end": today_date}).scalar_one())
+
+    insights = []
+
+    if moved_total >= 3:
+        insights.append(f"{moved_total} Aufgaben wurden in den letzten 30 Tagen verschoben.")
+    if skipped_total >= 3:
+        insights.append(f"{skipped_total} Aufgaben wurden in den letzten 30 Tagen ausgelassen.")
+    if boss_total > 0:
+        insights.append(f"{boss_total} Boss Fight{'s' if boss_total != 1 else ''} in den letzten 30 Tagen abgeschlossen.")
+    if training_total >= 12:
+        insights.append("Training ist aktuell eine sehr konstante Kategorie.")
+    if completion_total == 0:
+        insights.append("Noch zu wenig Daten für aussagekräftige Trends.")
+
+    strongest_category = None
+    nonzero_categories = [dict(r) for r in category_rows if int(r["completions"] or 0) > 0]
+    if nonzero_categories:
+        strongest_category = nonzero_categories[0]
+        insights.append(f"Stärkste Kategorie: {strongest_category['category']} mit {int(strongest_category['completions'])} Abschlüssen.")
+
+    return {
+        "period_days": 30,
+        "start_date": start_30.isoformat(),
+        "end_date": today_date.isoformat(),
+        "completion_total": completion_total,
+        "training_total": training_total,
+        "boss_total": boss_total,
+        "moved_total": moved_total,
+        "skipped_total": skipped_total,
+        "strongest_category": strongest_category,
+        "categories": [{
+            "category": r["category"],
+            "completions": int(r["completions"] or 0),
+            "xp": int(r["xp"] or 0),
+            "willpower_xp": int(r["willpower_xp"] or 0),
+        } for r in category_rows],
+        "kbr": [{
+            "kbr": int(r["kbr"] or 0),
+            "completions": int(r["completions"] or 0),
+            "willpower_xp": int(r["willpower_xp"] or 0),
+        } for r in kbr_rows],
+        "daily": [{
+            "date": r["d"].isoformat(),
+            "xp": int(r["xp"] or 0),
+            "willpower_xp": int(r["willpower_xp"] or 0),
+        } for r in daily_rows],
+        "insights": insights[:5],
+    }
+
+
 @app.get("/health")
 def health():
     with engine.connect() as c:
@@ -1613,7 +1746,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.3.0",
+        "version": "1.4.0",
         "schema_version": schema_version,
     }
 
@@ -1635,6 +1768,7 @@ def dashboard():
             "weekly_review": fetch_weekly_review(c),
             "weekly_goals": fetch_weekly_goals(c),
             "day_plan": fetch_day_plan(c),
+            "analytics": fetch_analytics(c),
         }
 
         # Stable Home Assistant transport wrapper.

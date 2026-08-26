@@ -67,3 +67,8 @@ cards:
   entity: sensor.life_manager
   title: Wochenziele
   script: script.life_weekly_goal_create
+
+
+- type: custom:life-manager-analytics-card
+  entity: sensor.life_manager
+  title: Insights

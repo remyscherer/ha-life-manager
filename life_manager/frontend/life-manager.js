@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.3.0";
-console.info("Life Manager Frontend v1.3.0 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.4.0";
+console.info("Life Manager Frontend v1.4.0 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -30,12 +30,148 @@ const LM={
   styles:()=>`:host{display:block}ha-card{overflow:hidden}.stat{background:var(--secondary-background-color);border-radius:12px;padding:10px}.stat b{display:block;font-size:18px}.stat small{opacity:.65}.bar{height:9px;background:var(--divider-color);border-radius:999px;overflow:hidden}.fill{height:100%;background:var(--primary-color)}button{border:0;border-radius:9px;padding:8px 10px;font-weight:700;cursor:pointer;background:var(--primary-color);color:white}button.secondary{background:var(--secondary-background-color);color:var(--primary-text-color)}button:disabled{opacity:.45}`
 };
 
+
 class LifeManagerCard extends HTMLElement{
-  constructor(){super();this.attachShadow({mode:"open"});this._busy=new Set();}
-  setConfig(c){this._config={entity:LM.entity(c),script:c.script||"script.life_quest_complete",title:c.title||"Life Manager"};this.render();}
+  constructor(){
+    super();
+    this.attachShadow({mode:"open"});
+    this._busy=new Set();
+  }
+
+  setConfig(c){
+    this._config={
+      entity:LM.entity(c),
+      script:c.script||"script.life_quest_complete",
+      occurrence_script:c.occurrence_script||"script.life_quest_occurrence",
+      title:c.title||"Life Manager"
+    };
+    this.render();
+  }
+
   set hass(h){this._hass=h;this.render();}
-  async complete(id,o){if(this._busy.has(id))return;this._busy.add(id);this.render();try{await LM.callScript(this._hass,this._config.script,{quest_id:Number(id),overcome:Boolean(o)});await LM.refresh(this._hass,this._config.entity);}catch(e){alert(e?.message||"Quest konnte nicht abgeschlossen werden.");}finally{this._busy.delete(id);this.render();}}
-  render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=LM.dataRoot(e).today||{},qs=Array.isArray(d.quests)?d.quests:[],g={};for(const q of qs)(g[q.category||"Sonstiges"]??=[]).push(q);const html=Object.entries(g).map(([cat,items])=>`<h3>${LM.esc(cat)}</h3>${items.map(q=>`<div class="q ${q.completed?"done":""}"><div><b>${LM.esc(q.name)}</b><small>+${Number(q.xp||0)} XP</small></div>${q.completed?`<span>✓</span>`:`<div class="actions"><button data-id="${q.id}" data-o="0">✓</button>${q.quest_type==="training"?`<button class="secondary" data-id="${q.id}" data-o="1">🔥</button>`:""}</div>`}</div>`).join("")}`).join("");this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:end}.pct{font-size:28px;font-weight:800}.bar{margin:12px 0 16px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.q{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--divider-color);padding:10px 0}.q small{display:block;opacity:.65}.done{opacity:.55}.actions{display:flex;gap:6px}@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}</style><ha-card><div class="head"><div><small>HEUTE</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="pct">${Number(d.progress_percent||0)}%</div></div><div class="bar"><div class="fill" style="width:${Math.min(100,Number(d.progress_percent||0))}%"></div></div><div class="stats"><div class="stat"><b>${Number(d.xp_today||0)}/${Number(d.possible_xp||0)}</b><small>XP</small></div><div class="stat"><b>${Number(d.completed_count||0)}/${Number(d.quest_count||0)}</b><small>Quests</small></div><div class="stat"><b>${Number(d.willpower_xp_today||0)}</b><small>Willpower</small></div><div class="stat"><b>${Number(d.projected_coins||0)} 🪙</b><small>Heute</small></div></div>${html}</ha-card>`;this.shadowRoot.querySelectorAll("button[data-id]").forEach(b=>b.onclick=()=>this.complete(Number(b.dataset.id),b.dataset.o==="1"));}
+
+  async complete(id,overcome){
+    if(this._busy.has(id))return;
+    this._busy.add(id);this.render();
+    try{
+      await LM.callScript(this._hass,this._config.script,{
+        quest_id:Number(id),
+        overcome:Boolean(overcome)
+      });
+      await LM.refresh(this._hass,this._config.entity);
+    }catch(e){
+      alert(e?.message||"Quest konnte nicht abgeschlossen werden.");
+    }finally{
+      this._busy.delete(id);this.render();
+    }
+  }
+
+  async occurrence(id,action,targetDate=null){
+    if(this._busy.has(id))return;
+    this._busy.add(id);this.render();
+    try{
+      await LM.callScript(this._hass,this._config.occurrence_script,{
+        quest_id:Number(id),
+        action,
+        target_date:targetDate,
+        note:null
+      });
+      await LM.refresh(this._hass,this._config.entity);
+    }catch(e){
+      alert(e?.message||"Quest konnte nicht verschoben werden.");
+    }finally{
+      this._busy.delete(id);this.render();
+    }
+  }
+
+  async moveDate(id){
+    const target=prompt("Auf welches Datum verschieben? (YYYY-MM-DD)");
+    if(!target)return;
+    await this.occurrence(id,"move",target);
+  }
+
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){
+      this.shadowRoot.innerHTML=LM.missing(this._config.entity);
+      return;
+    }
+
+    const d=LM.dataRoot(e).today||{};
+    const qs=Array.isArray(d.quests)?d.quests:[];
+    const groups={};
+    for(const q of qs)(groups[q.category||"Sonstiges"]??=[]).push(q);
+
+    const html=Object.entries(groups).map(([cat,items])=>`
+      <h3>${LM.esc(cat)}</h3>
+      ${items.map(q=>`
+        <div class="q ${q.completed?"done":""}">
+          <div class="q-main">
+            <b>${LM.esc(q.name)}</b>
+            <small>
+              +${Number(q.xp||0)} XP
+              ${q.moved_from?` · ↪ verschoben von ${LM.esc(q.moved_from)}`:""}
+            </small>
+          </div>
+          ${q.completed
+            ? `<span class="check">✓</span>`
+            : `<div class="actions">
+                <button data-complete="${q.id}" title="Erledigt">✓</button>
+                <button class="secondary" data-overcome="${q.id}" title="Kein Bock überwunden">🔥</button>
+                <button class="secondary" data-tomorrow="${q.id}" title="Auf morgen verschieben">→</button>
+                <button class="secondary" data-date="${q.id}" title="Auf Datum verschieben">📅</button>
+                <button class="secondary" data-skip="${q.id}" title="Heute auslassen">⏭</button>
+              </div>`
+          }
+        </div>
+      `).join("")}
+    `).join("");
+
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .head{display:flex;justify-content:space-between;align-items:end}
+        .pct{font-size:28px;font-weight:800}
+        .bar{margin:12px 0 16px}
+        .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+        .q{display:flex;justify-content:space-between;align-items:center;gap:12px;border-top:1px solid var(--divider-color);padding:10px 0}
+        .q-main{min-width:0}
+        .q small{display:block;opacity:.65;margin-top:3px}
+        .done{opacity:.55}
+        .actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+        .actions button{min-width:38px}
+        .check{font-size:18px}
+        @media(max-width:600px){
+          .stats{grid-template-columns:repeat(2,1fr)}
+          .q{align-items:flex-start;flex-direction:column}
+          .actions{width:100%;justify-content:flex-start}
+          .actions button{min-width:44px;min-height:40px}
+        }
+      </style>
+      <ha-card>
+        <div class="head">
+          <div><small>HEUTE</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div>
+          <div class="pct">${Number(d.progress_percent||0)}%</div>
+        </div>
+        <div class="bar"><div class="fill" style="width:${Math.min(100,Number(d.progress_percent||0))}%"></div></div>
+        <div class="stats">
+          <div class="stat"><b>${Number(d.xp_today||0)}/${Number(d.possible_xp||0)}</b><small>XP</small></div>
+          <div class="stat"><b>${Number(d.completed_count||0)}/${Number(d.quest_count||0)}</b><small>Quests</small></div>
+          <div class="stat"><b>${Number(d.willpower_xp_today||0)}</b><small>Willpower</small></div>
+          <div class="stat"><b>${Number(d.projected_coins||0)} 🪙</b><small>Heute</small></div>
+        </div>
+        ${html}
+      </ha-card>
+    `;
+
+    this.shadowRoot.querySelectorAll("[data-complete]").forEach(b=>b.onclick=()=>this.complete(Number(b.dataset.complete),false));
+    this.shadowRoot.querySelectorAll("[data-overcome]").forEach(b=>b.onclick=()=>this.complete(Number(b.dataset.overcome),true));
+    this.shadowRoot.querySelectorAll("[data-tomorrow]").forEach(b=>b.onclick=()=>this.occurrence(Number(b.dataset.tomorrow),"tomorrow"));
+    this.shadowRoot.querySelectorAll("[data-date]").forEach(b=>b.onclick=()=>this.moveDate(Number(b.dataset.date)));
+    this.shadowRoot.querySelectorAll("[data-skip]").forEach(b=>b.onclick=()=>this.occurrence(Number(b.dataset.skip),"skip"));
+  }
 }
 
 class LifeManagerPlayerCard extends HTMLElement{
@@ -941,6 +1077,55 @@ class LifeManagerWeeklyGoalsCard extends HTMLElement{
   }
 }
 
+
+class LifeManagerAnalyticsCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Insights"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+    const d=LM.dataRoot(e).analytics||{};
+    const cats=Array.isArray(d.categories)?d.categories.filter(x=>x.completions>0).slice(0,5):[];
+    const insights=Array.isArray(d.insights)?d.insights:[];
+    const max=Math.max(1,...cats.map(x=>Number(x.completions||0)));
+
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+        .category{display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center;padding:7px 0}
+        .mini{height:7px;background:var(--divider-color);border-radius:999px;overflow:hidden}
+        .mini>span{display:block;height:100%;background:var(--primary-color)}
+        .insight{padding:8px 0;border-top:1px solid var(--divider-color);font-size:13px}
+        @media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}.category{grid-template-columns:90px 1fr auto}}
+      </style>
+      <ha-card>
+        <small>📈 30 TAGE</small>
+        <h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2>
+        <div class="stats">
+          <div class="stat"><b>${Number(d.completion_total||0)}</b><small>Quests</small></div>
+          <div class="stat"><b>${Number(d.training_total||0)}</b><small>Trainings</small></div>
+          <div class="stat"><b>${Number(d.moved_total||0)}</b><small>Verschoben</small></div>
+          <div class="stat"><b>${Number(d.skipped_total||0)}</b><small>Ausgelassen</small></div>
+        </div>
+        <b>Stärkste Kategorien</b>
+        ${cats.map(x=>`
+          <div class="category">
+            <span>${LM.esc(x.category)}</span>
+            <div class="mini"><span style="width:${Math.round(Number(x.completions||0)/max*100)}%"></span></div>
+            <b>${Number(x.completions||0)}</b>
+          </div>
+        `).join("")||'<div style="opacity:.65;padding:8px 0">Noch zu wenig Daten.</div>'}
+        <div style="margin-top:12px"><b>Insights</b></div>
+        ${insights.map(x=>`<div class="insight">• ${LM.esc(x)}</div>`).join("")}
+      </ha-card>
+    `;
+  }
+}
+
 const defs=[
 ["life-manager-card",LifeManagerCard],
 ["life-manager-player-card",LifeManagerPlayerCard],
@@ -958,6 +1143,7 @@ const defs=[
 ["life-manager-planner-card",LifeManagerPlannerCard],
 ["life-manager-weekly-review-card",LifeManagerWeeklyReviewCard],
 ["life-manager-day-plan-card",LifeManagerDayPlanCard],
-["life-manager-weekly-goals-card",LifeManagerWeeklyGoalsCard]
+["life-manager-weekly-goals-card",LifeManagerWeeklyGoalsCard],
+["life-manager-analytics-card",LifeManagerAnalyticsCard]
 ];
 for(const [n,c] of defs){if(!customElements.get(n))customElements.define(n,c);}
