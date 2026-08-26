@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import date, timedelta
 
 from fastapi import FastAPI, HTTPException, Header
@@ -19,7 +20,8 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="0.7.2")
+app = FastAPI(title="Life Manager", version="0.7.3")
+logger = logging.getLogger("life_manager")
 
 
 class CompleteQuest(BaseModel):
@@ -486,7 +488,7 @@ def replace_schedules(connection, quest_id: int, payload: QuestPayload):
 def health():
     with engine.connect() as c:
         c.execute(text("SELECT 1"))
-    return {"status": "ok", "database": "connected", "version": "0.7.2"}
+    return {"status": "ok", "database": "connected", "version": "0.7.3"}
 
 
 @app.get("/dashboard")
@@ -617,6 +619,13 @@ def purchase_reward(
     }
 
 
+
+@app.get("/quests")
+def list_quests():
+    with engine.connect() as c:
+        return fetch_quest_manager(c)
+
+
 @app.post("/quests")
 def create_quest(
     payload: QuestPayload,
@@ -625,6 +634,7 @@ def create_quest(
     check_api_key(x_api_key)
     validate_quest_payload(payload)
 
+    logger.info("Creating quest: %s", payload.name)
     with engine.begin() as c:
         values = payload.model_dump(exclude={"weekdays", "interval_days", "next_due"})
 
@@ -640,7 +650,18 @@ def create_quest(
         quest_id = result.lastrowid
         replace_schedules(c, quest_id, payload)
 
-    return {"success": True, "quest_id": quest_id}
+        saved = c.execute(text("""
+            SELECT q.id, q.name, q.category_id, c.name AS category,
+                   q.quest_type, q.description, q.estimated_minutes, q.kbr,
+                   q.xp_mode, q.fixed_xp, q.frequency_days, q.project_factor,
+                   q.active
+            FROM quests q
+            JOIN categories c ON c.id=q.category_id
+            WHERE q.id=:qid
+        """), {"qid": quest_id}).mappings().first()
+
+    logger.info("Quest created: id=%s name=%s", quest_id, payload.name)
+    return {"success": True, "quest_id": quest_id, "quest": dict(saved) if saved else None}
 
 
 @app.put("/quests/{quest_id}")
@@ -680,7 +701,18 @@ def update_quest(
 
         replace_schedules(c, quest_id, payload)
 
-    return {"success": True, "quest_id": quest_id}
+        saved = c.execute(text("""
+            SELECT q.id, q.name, q.category_id, c.name AS category,
+                   q.quest_type, q.description, q.estimated_minutes, q.kbr,
+                   q.xp_mode, q.fixed_xp, q.frequency_days, q.project_factor,
+                   q.active
+            FROM quests q
+            JOIN categories c ON c.id=q.category_id
+            WHERE q.id=:qid
+        """), {"qid": quest_id}).mappings().first()
+
+    logger.info("Quest updated: id=%s name=%s", quest_id, payload.name)
+    return {"success": True, "quest_id": quest_id, "quest": dict(saved) if saved else None}
 
 
 @app.post("/quests/{quest_id}/toggle")

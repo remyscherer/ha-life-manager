@@ -30,4 +30,4 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "0.7.2"' life_manager/config.yaml
+          grep -q 'version: "0.7.3"' life_manager/config.yaml

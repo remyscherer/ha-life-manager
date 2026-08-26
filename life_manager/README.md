@@ -1,4 +1,4 @@
-# Life Manager v0.7.2
+# Life Manager v0.7.3
 
 ## Neu
 
@@ -35,7 +35,7 @@ Der API-Key bleibt ausschließlich in `secrets.yaml`.
 1. Add-on stoppen.
 2. Dateien ersetzen.
 3. Add-on neu bauen.
-4. `/health` muss Version `0.7.2` liefern.
+4. `/health` muss Version `0.7.3` liefern.
 5. Frontend-Ressource auf `/local/life-manager.js?v=070` ändern.
 6. `examples/life_manager_package.yaml` übernehmen/abgleichen.
 7. YAML-Konfiguration prüfen.
@@ -65,8 +65,18 @@ update_script: script.life_quest_update
 toggle_script: script.life_quest_toggle
 ```
 
-## v0.7.2 repository cleanup
+## v0.7.3 repository cleanup
 
 - Example configuration no longer contains a personal LAN IP.
 - Repository ships with a basic GitHub Actions validation workflow.
 - Repository metadata is included at the repository root.
+
+
+## v0.7.3 Quest Manager repair
+
+- Quest creation payload uses Home Assistant's `to_json` filter.
+- New inline Quest Editor replaces prompt dialogs.
+- Categories, type, XP mode, KBR and schedules are editable in a proper form.
+- API now exposes `GET /quests`.
+- Create/update endpoints return the saved quest.
+- API writes create/update events to the add-on log.

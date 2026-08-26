@@ -50,96 +50,324 @@ class LifeManagerRewardCard extends HTMLElement{
   render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=(e.attributes||{}).rewards||{},rs=Array.isArray(d.rewards)?d.rewards:[];this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:center}.balance{font-size:26px;font-weight:800}.reward{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border-top:1px solid var(--divider-color);padding:12px 0}.reward small{display:block;opacity:.65}.cost{font-weight:800}.locked{opacity:.45}</style><ha-card><div class="head"><div><small>🪙 REWARDS</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="balance">${Number(d.coin_balance||0)} 🪙</div></div>${rs.map(x=>`<div class="reward ${x.can_afford?"":"locked"}"><div><b>${LM.esc(x.name)}</b><small>${LM.esc(x.description||"")}</small></div><div class="cost">${Number(x.cost||0)} 🪙</div><button data-buy="${x.id}" ${(!x.can_afford||this._busy===x.id)?"disabled":""}>${this._busy===x.id?"…":"Kaufen"}</button></div>`).join("")||"<div>Keine Rewards angelegt.</div>"}</ha-card>`;this.shadowRoot.querySelectorAll("button[data-buy]").forEach(b=>b.onclick=()=>this.buy(Number(b.dataset.buy)));}
 }
 
+
 class LifeManagerQuestManagerCard extends HTMLElement{
-  constructor(){super();this.attachShadow({mode:"open"});}
-  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Quest Manager",create_script:c.create_script||"script.life_quest_create",update_script:c.update_script||"script.life_quest_update",toggle_script:c.toggle_script||"script.life_quest_toggle"};this.render();}
+  constructor(){
+    super();
+    this.attachShadow({mode:"open"});
+    this._editId=null;
+    this._message="";
+    this._filter="";
+  }
+
+  setConfig(c){
+    this._config={
+      entity:LM.entity(c),
+      title:c.title||"Quest Manager",
+      create_script:c.create_script||"script.life_quest_create",
+      update_script:c.update_script||"script.life_quest_update",
+      toggle_script:c.toggle_script||"script.life_quest_toggle"
+    };
+    this.render();
+  }
+
   set hass(h){this._hass=h;this.render();}
+
+  getData(){
+    return (this._hass?.states?.[this._config.entity]?.attributes||{}).quest_manager||{};
+  }
 
   async call(script,variables){
     await this._hass.callService("script","turn_on",{entity_id:script,variables});
     await LM.refresh(this._hass,this._config.entity);
   }
 
-  getData(){
-    return (this._hass?.states?.[this._config.entity]?.attributes||{}).quest_manager||{};
-  }
-
-  async toggle(id){
-    try{await this.call(this._config.toggle_script,{quest_id:Number(id)});}
-    catch(e){alert(e?.message||"Quest konnte nicht geändert werden.");}
-  }
-
-  collect(existing=null){
-    const d=this.getData();
-    const cats=Array.isArray(d.categories)?d.categories:[];
-    if(!cats.length){alert("Keine Kategorien vorhanden.");return null;}
-
-    const name=prompt("Quest-Name:",existing?.name||"");
-    if(!name)return null;
-
-    const catText=cats.map(x=>`${x.id}: ${x.name}`).join("\n");
-    const categoryId=Number(prompt(`Kategorie-ID:\n${catText}`,String(existing?.category_id||cats[0].id)));
-    if(!categoryId)return null;
-
-    const type=prompt("Typ: routine, habit, training, project, milestone",existing?.quest_type||"routine")||"routine";
-    const xpMode=prompt("XP-Modus: fixed oder formula",existing?.xp_mode||"formula")||"formula";
-
-    let fixedXp=null,minutes=null,kbr=null,frequency=null;
-    if(xpMode==="fixed"){
-      fixedXp=Number(prompt("Feste XP:",String(existing?.fixed_xp??10))||"10");
-    }else{
-      minutes=Number(prompt("Geschätzte Minuten:",String(existing?.estimated_minutes??30))||"30");
-      kbr=Number(prompt("KBR 1-5:",String(existing?.kbr??3))||"3");
-      frequency=Number(prompt("Frequenz in Tagen:",String(existing?.frequency_days??7))||"7");
-    }
-
-    const existingWeekdays=(existing?.schedules||[]).filter(s=>s.weekday).map(s=>s.weekday).join(",");
-    const intervalExisting=(existing?.schedules||[]).find(s=>s.interval_days)?.interval_days||0;
-    const weekdayInput=prompt("Wochentage 1-7 kommasepariert, leer wenn nicht benötigt:",existingWeekdays)||"";
-    const intervalInput=prompt("Intervall in Tagen (z.B. 1 täglich), leer wenn nicht benötigt:",String(intervalExisting||""))||"";
-
+  scheduleValues(q){
+    const schedules=q?.schedules||[];
     return {
-      name,
-      category_id:categoryId,
-      quest_type:type,
-      xp_mode:xpMode,
-      fixed_xp:fixedXp,
-      estimated_minutes:minutes,
-      kbr,
-      frequency_days:frequency,
-      weekdays:weekdayInput,
-      interval_days:intervalInput?Number(intervalInput):0,
-      active:existing?.active!==false
+      weekdays:schedules.filter(s=>s.weekday).map(s=>Number(s.weekday)),
+      interval_days:schedules.find(s=>s.interval_days)?.interval_days||null,
+      next_due:schedules.find(s=>s.next_due)?.next_due||""
     };
   }
 
-  async create(){
-    const data=this.collect();
-    if(!data)return;
-    try{await this.call(this._config.create_script,data);}
-    catch(e){alert(e?.message||"Quest konnte nicht erstellt werden.");}
+  openEditor(id=null){
+    this._editId=id;
+    this._message="";
+    this.render();
   }
 
-  async edit(id){
-    const d=this.getData();
-    const q=(d.quests||[]).find(x=>Number(x.id)===Number(id));
-    if(!q)return;
-    const data=this.collect(q);
-    if(!data)return;
-    data.quest_id=Number(id);
-    try{await this.call(this._config.update_script,data);}
-    catch(e){alert(e?.message||"Quest konnte nicht gespeichert werden.");}
+  closeEditor(){
+    this._editId=null;
+    this.render();
+  }
+
+  value(id){
+    return this.shadowRoot.getElementById(id)?.value ?? "";
+  }
+
+  checked(id){
+    return Boolean(this.shadowRoot.getElementById(id)?.checked);
+  }
+
+  nullableNumber(id){
+    const v=this.value(id);
+    return v==="" ? null : Number(v);
+  }
+
+  async save(){
+    const weekdays=[...this.shadowRoot.querySelectorAll("input[data-weekday]:checked")]
+      .map(x=>Number(x.dataset.weekday));
+
+    const payload={
+      name:this.value("lm-name").trim(),
+      category_id:Number(this.value("lm-category")),
+      quest_type:this.value("lm-type"),
+      description:this.value("lm-description").trim()||null,
+      xp_mode:this.value("lm-xpmode"),
+      fixed_xp:this.nullableNumber("lm-fixed-xp"),
+      estimated_minutes:this.nullableNumber("lm-minutes"),
+      kbr:this.nullableNumber("lm-kbr"),
+      frequency_days:this.nullableNumber("lm-frequency"),
+      project_factor:this.nullableNumber("lm-project-factor"),
+      weekdays,
+      interval_days:this.nullableNumber("lm-interval"),
+      next_due:this.value("lm-next-due")||null,
+      active:this.checked("lm-active")
+    };
+
+    if(!payload.name){
+      this._message="❌ Name fehlt.";
+      this.render();
+      return;
+    }
+
+    try{
+      if(this._editId){
+        await this.call(this._config.update_script,{quest_id:Number(this._editId),...payload});
+        this._message="✅ Quest gespeichert.";
+      }else{
+        await this.call(this._config.create_script,payload);
+        this._message="✅ Quest angelegt.";
+      }
+      this._editId=null;
+      await LM.refresh(this._hass,this._config.entity);
+      this.render();
+    }catch(e){
+      console.error("Life Manager Quest Save Error:",e);
+      this._message=`❌ ${e?.message||"Quest konnte nicht gespeichert werden."}`;
+      this.render();
+    }
+  }
+
+  async toggle(id){
+    try{
+      await this.call(this._config.toggle_script,{quest_id:Number(id)});
+      this._message="✅ Status geändert.";
+      this.render();
+    }catch(e){
+      this._message=`❌ ${e?.message||"Status konnte nicht geändert werden."}`;
+      this.render();
+    }
+  }
+
+  renderEditor(d){
+    const cats=Array.isArray(d.categories)?d.categories:[];
+    const q=this._editId ? (d.quests||[]).find(x=>Number(x.id)===Number(this._editId)) : null;
+    const sched=this.scheduleValues(q);
+
+    const weekdayBtns=[1,2,3,4,5,6,7].map((n,i)=>{
+      const names=["Mo","Di","Mi","Do","Fr","Sa","So"];
+      return `<label class="weekday">
+        <input type="checkbox" data-weekday="${n}" ${sched.weekdays.includes(n)?"checked":""}>
+        <span>${names[i]}</span>
+      </label>`;
+    }).join("");
+
+    return `
+      <div class="editor">
+        <div class="editor-head">
+          <h3>${q?"Quest bearbeiten":"Neue Quest"}</h3>
+          <button class="secondary" id="lm-cancel">Schließen</button>
+        </div>
+
+        <div class="grid">
+          <label class="wide">Name
+            <input id="lm-name" value="${LM.esc(q?.name||"")}">
+          </label>
+
+          <label>Kategorie
+            <select id="lm-category">
+              ${cats.map(c=>`<option value="${c.id}" ${Number(q?.category_id)===Number(c.id)?"selected":""}>${LM.esc(c.name)}</option>`).join("")}
+            </select>
+          </label>
+
+          <label>Typ
+            <select id="lm-type">
+              ${["routine","habit","training","project","milestone"].map(x=>`<option ${q?.quest_type===x?"selected":""}>${x}</option>`).join("")}
+            </select>
+          </label>
+
+          <label class="wide">Beschreibung
+            <textarea id="lm-description">${LM.esc(q?.description||"")}</textarea>
+          </label>
+
+          <label>XP-Modus
+            <select id="lm-xpmode">
+              <option value="formula" ${q?.xp_mode!=="fixed"?"selected":""}>Automatisch</option>
+              <option value="fixed" ${q?.xp_mode==="fixed"?"selected":""}>Fix</option>
+            </select>
+          </label>
+
+          <label>Feste XP
+            <input id="lm-fixed-xp" type="number" min="0" value="${q?.fixed_xp??""}">
+          </label>
+
+          <label>Zeit (Min.)
+            <input id="lm-minutes" type="number" min="0" value="${q?.estimated_minutes??""}">
+          </label>
+
+          <label>KBR
+            <select id="lm-kbr">
+              <option value="">–</option>
+              ${[1,2,3,4,5].map(n=>`<option value="${n}" ${Number(q?.kbr)===n?"selected":""}>${n}</option>`).join("")}
+            </select>
+          </label>
+
+          <label>Frequenz (Tage)
+            <input id="lm-frequency" type="number" min="1" value="${q?.frequency_days??""}">
+          </label>
+
+          <label>Projektfaktor
+            <input id="lm-project-factor" type="number" min="0" step="0.5" value="${q?.project_factor??""}">
+          </label>
+
+          <div class="wide">
+            <div class="field-title">Wochentage</div>
+            <div class="weekdays">${weekdayBtns}</div>
+          </div>
+
+          <label>Intervall (Tage)
+            <input id="lm-interval" type="number" min="1" value="${sched.interval_days??""}">
+          </label>
+
+          <label>Nächste Fälligkeit
+            <input id="lm-next-due" type="date" value="${sched.next_due||""}">
+          </label>
+
+          <label class="switch-row wide">
+            <input id="lm-active" type="checkbox" ${q?.active===false?"":"checked"}>
+            Aktiv
+          </label>
+        </div>
+
+        <div class="editor-actions">
+          <button class="secondary" id="lm-cancel2">Abbrechen</button>
+          <button id="lm-save">Speichern</button>
+        </div>
+      </div>
+    `;
   }
 
   render(){
     if(!this._config)return;
     const e=this._hass?.states?.[this._config.entity];
-    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
-    const d=(e.attributes||{}).quest_manager||{},qs=Array.isArray(d.quests)?d.quests:[];
-    this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;border-top:1px solid var(--divider-color);padding:10px 0}.row small{display:block;opacity:.65}.inactive{opacity:.45}@media(max-width:700px){.row{grid-template-columns:1fr auto}.meta{grid-column:1}.status{grid-column:2}}</style><ha-card><div class="head"><div><small>⚙️ ADMIN</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><button id="create">+ Neue Quest</button></div>${qs.map(q=>`<div class="row ${q.active?"":"inactive"}"><div class="meta"><b>${LM.esc(q.name)}</b><small>${LM.esc(q.category)} · ${LM.esc(q.quest_type)} · ${LM.esc(q.xp_mode)}</small></div><span class="status">${q.active?"Aktiv":"Aus"}</span><button class="secondary" data-edit="${q.id}">Bearbeiten</button><button class="secondary" data-toggle="${q.id}">${q.active?"Deaktivieren":"Aktivieren"}</button></div>`).join("")}</ha-card>`;
-    this.shadowRoot.getElementById("create").onclick=()=>this.create();
-    this.shadowRoot.querySelectorAll("button[data-edit]").forEach(b=>b.onclick=()=>this.edit(Number(b.dataset.edit)));
-    this.shadowRoot.querySelectorAll("button[data-toggle]").forEach(b=>b.onclick=()=>this.toggle(Number(b.dataset.toggle)));
+    if(!e){
+      this.shadowRoot.innerHTML=LM.missing(this._config.entity);
+      return;
+    }
+
+    const d=(e.attributes||{}).quest_manager||{};
+    let quests=Array.isArray(d.quests)?d.quests:[];
+
+    if(this._filter){
+      const f=this._filter.toLowerCase();
+      quests=quests.filter(q=>
+        String(q.name||"").toLowerCase().includes(f) ||
+        String(q.category||"").toLowerCase().includes(f)
+      );
+    }
+
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+        .toolbar{display:flex;gap:8px;margin:12px 0}
+        .toolbar input{flex:1}
+        .message{padding:9px 11px;background:var(--secondary-background-color);border-radius:9px;margin:10px 0}
+        .row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;border-top:1px solid var(--divider-color);padding:10px 0}
+        .row small{display:block;opacity:.65}
+        .inactive{opacity:.45}
+        input,select,textarea{box-sizing:border-box;width:100%;padding:9px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color)}
+        textarea{min-height:70px;resize:vertical}
+        .editor{margin-top:14px;padding:14px;background:var(--secondary-background-color);border-radius:12px}
+        .editor-head,.editor-actions{display:flex;justify-content:space-between;align-items:center;gap:8px}
+        .editor-head h3{margin:0}
+        .editor-actions{justify-content:flex-end;margin-top:14px}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+        .grid label{font-size:12px;font-weight:600}
+        .wide{grid-column:1/-1}
+        .field-title{font-size:12px;font-weight:600;margin-bottom:6px}
+        .weekdays{display:flex;gap:6px;flex-wrap:wrap}
+        .weekday input{display:none}
+        .weekday span{display:inline-block;padding:7px 9px;border-radius:8px;background:var(--card-background-color);border:1px solid var(--divider-color)}
+        .weekday input:checked+span{background:var(--primary-color);color:white}
+        .switch-row{display:flex!important;align-items:center;gap:8px}
+        .switch-row input{width:auto}
+        @media(max-width:700px){
+          .row{grid-template-columns:1fr auto}
+          .grid{grid-template-columns:1fr}
+          .wide{grid-column:1}
+        }
+      </style>
+
+      <ha-card>
+        <div class="head">
+          <div><small>⚙️ ADMIN</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div>
+          <button id="lm-new">+ Neue Quest</button>
+        </div>
+
+        <div class="toolbar">
+          <input id="lm-search" placeholder="Quest suchen…" value="${LM.esc(this._filter)}">
+        </div>
+
+        ${this._message?`<div class="message">${LM.esc(this._message)}</div>`:""}
+
+        ${this._editId!==null ? this.renderEditor(d) : ""}
+
+        <div class="list">
+          ${quests.map(q=>`
+            <div class="row ${q.active?"":"inactive"}">
+              <div>
+                <b>${LM.esc(q.name)}</b>
+                <small>${LM.esc(q.category)} · ${LM.esc(q.quest_type)} · ${LM.esc(q.xp_mode)}${q.kbr?` · KBR ${q.kbr}`:""}</small>
+              </div>
+              <span>${q.active?"Aktiv":"Aus"}</span>
+              <button class="secondary" data-edit="${q.id}">Bearbeiten</button>
+              <button class="secondary" data-toggle="${q.id}">${q.active?"Deaktivieren":"Aktivieren"}</button>
+            </div>
+          `).join("") || "<div>Keine Quests gefunden.</div>"}
+        </div>
+      </ha-card>
+    `;
+
+    this.shadowRoot.getElementById("lm-new").onclick=()=>this.openEditor(0);
+    const search=this.shadowRoot.getElementById("lm-search");
+    search.oninput=()=>{this._filter=search.value;};
+
+    this.shadowRoot.querySelectorAll("button[data-edit]").forEach(b=>{
+      b.onclick=()=>this.openEditor(Number(b.dataset.edit));
+    });
+    this.shadowRoot.querySelectorAll("button[data-toggle]").forEach(b=>{
+      b.onclick=()=>this.toggle(Number(b.dataset.toggle));
+    });
+
+    if(this._editId!==null){
+      this.shadowRoot.getElementById("lm-save").onclick=()=>this.save();
+      this.shadowRoot.getElementById("lm-cancel").onclick=()=>this.closeEditor();
+      this.shadowRoot.getElementById("lm-cancel2").onclick=()=>this.closeEditor();
+    }
   }
 }
 
