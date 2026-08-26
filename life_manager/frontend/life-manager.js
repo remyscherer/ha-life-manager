@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.5.8";
-console.info("Life Manager Frontend v1.5.8 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.6.0";
+console.info("Life Manager Frontend v1.6.0 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -706,7 +706,9 @@ class LifeManagerSavingsCard extends HTMLElement{
               <b>${LM.esc(g.name)}</b>
               <span>${Number(g.current_coins||0)} / ${Number(g.target_coins||0)} 🪙</span>
             </div>
-            <div class="bar"><div class="fill" style="width:${Math.min(100,Number(g.progress_percent||0))}%"></div></div>
+            ${g.reward_name?`<div class="muted">🎁 ${LM.esc(g.reward_name)}</div>`:""}
+              <div class="bar"><div class="fill" style="width:${Math.min(100,Number(g.progress_percent||0))}%"></div></div>
+              ${Number(g.reserved_coins||0)>0?`<div class="muted">🔒 ${Number(g.reserved_coins)} 🪙 reserviert</div>`:""}
             <div class="meta">${Number(g.remaining||0)} Coins fehlen noch</div>
           </div>
         `).join("")||"<div>Noch keine Sparziele.</div>"}
@@ -1350,6 +1352,7 @@ class LifeManagerDashboardCard extends HTMLElement{
           <div class="eyebrow">🪙 WALLET</div>
           <div class="big">${Number(rewards.coin_balance||0)} 🪙</div>
           <div class="muted">aktueller Kontostand</div>
+          <div class="wallet-split"><span>Frei <b>${Number(rewards.available_unreserved_coins ?? rewards.coin_balance ?? 0)} 🪙</b></span><span>Reserviert <b>${Number(rewards.reserved_coins_total||0)} 🪙</b></span></div>
         </section>
         <section class="panel">
           <div class="eyebrow">🎯 SPARZIELE</div>
@@ -1368,7 +1371,7 @@ class LifeManagerDashboardCard extends HTMLElement{
           <div class="reward-grid">
             ${items.map(r=>`
               <div class="reward">
-                <div><b>${LM.esc(r.name)}</b><small>${LM.esc(r.description||"")}</small></div>
+                <div><b>${r.wishlist?"⭐ ":""}${LM.esc(r.name)}</b><small>${LM.esc(r.description||"")}${!r.can_afford?` · noch ${Number(r.coins_missing||0)} 🪙`:""}</small></div>
                 <button type="button" data-buy="${r.id}" ${r.can_afford?"":"disabled"}>${Number(r.cost||0)} 🪙</button>
               </div>
             `).join("")||'<div class="empty">Keine aktiven Rewards.</div>'}
@@ -1487,6 +1490,7 @@ class LifeManagerDashboardCard extends HTMLElement{
         .goal{margin-top:10px}
         .reward-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
         .reward{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px;border:1px solid var(--divider-color);border-radius:10px}
+        .wallet-split{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:12px;opacity:.75}.wallet-split b{margin-left:4px}
         .positive{color:var(--success-color,#4caf50)}
         .negative{color:var(--error-color,#f44336)}
         .empty{font-size:13px;opacity:.6;padding:10px 0}
@@ -1508,7 +1512,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.5.8</div>
+          <div class="version">Frontend v1.6.0</div>
         </div>
 
         <div class="tabs">

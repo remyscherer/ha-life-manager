@@ -39,7 +39,7 @@ bashio::log.info "Nach einer neuen/änderten Bridge ist ein Home Assistant Core 
 
 mkdir -p /homeassistant/www
 
-FRONTEND_VERSION="1.5.8"
+FRONTEND_VERSION="1.6.0"
 FRONTEND_FILE="life-manager-${FRONTEND_VERSION}.js"
 
 cp /frontend/life-manager.js "/homeassistant/www/${FRONTEND_FILE}" || \
@@ -69,5 +69,5 @@ if ! python3 migrate.py; then
   exit 1
 fi
 
-bashio::log.info "Starte Life Manager API v1.5.8"
+bashio::log.info "Starte Life Manager API v1.6.0"
 exec uvicorn main:app --host 0.0.0.0 --port 8000

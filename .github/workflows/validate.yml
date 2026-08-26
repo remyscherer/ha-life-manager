@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.5.8"' life_manager/config.yaml
+          grep -q 'version: "1.6.0"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -134,3 +134,9 @@ jobs:
     test -f life_manager/examples/dashboard_single_card.yaml
     grep -q 'life-manager-dashboard-card' life_manager/frontend/life-manager.js
     python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
+
+      - name: Validate v1.6.0 Reward System 2.0
+        run: |
+          test -f life_manager/migrations/160_rewards_2.sql
+          grep -q 'reserved_coins' life_manager/app/main.py
+          python -m py_compile life_manager/app/main.py life_manager/app/migrate.py

@@ -20,12 +20,20 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.5.8")
+app = FastAPI(title="Life Manager", version="1.6.0")
 logger = logging.getLogger("life_manager")
 
 
 class CompleteQuest(BaseModel):
     overcome: bool = False
+
+
+class RewardWishlistUpdate(BaseModel):
+    wishlist: bool
+
+
+class SavingsGoalReserveUpdate(BaseModel):
+    reserved_coins: int
 
 
 class RewardPurchase(BaseModel):
@@ -420,9 +428,9 @@ def fetch_rewards(connection):
     ).scalar_one())
 
     rewards = connection.execute(text("""
-        SELECT id,name,description,cost,icon,active,sort_order
+        SELECT id,name,description,cost,icon,active,sort_order,wishlist
         FROM rewards
-        ORDER BY active DESC, sort_order, cost, id
+        ORDER BY wishlist DESC, active DESC, sort_order, cost, id
     """)).mappings().all()
 
     recent_purchases = connection.execute(text("""
@@ -430,7 +438,7 @@ def fetch_rewards(connection):
         FROM reward_purchases rp
         JOIN rewards r ON r.id=rp.reward_id
         ORDER BY rp.purchased_at DESC
-        LIMIT 10
+        LIMIT 20
     """)).mappings().all()
 
     coin_history = connection.execute(text("""
@@ -441,16 +449,21 @@ def fetch_rewards(connection):
     """)).mappings().all()
 
     goals = connection.execute(text("""
-        SELECT sg.id, sg.name, sg.target_coins, sg.reward_id, sg.active,
-               r.name AS reward_name
+        SELECT sg.id,sg.name,sg.target_coins,sg.reward_id,sg.active,
+               sg.reserved_coins,r.name AS reward_name,r.cost AS reward_cost
         FROM savings_goals sg
         LEFT JOIN rewards r ON r.id=sg.reward_id
         WHERE sg.active=1
         ORDER BY sg.id
     """)).mappings().all()
 
+    reserved_total = sum(int(g["reserved_coins"] or 0) for g in goals)
+    available = max(0, balance - reserved_total)
+
     return {
         "coin_balance": balance,
+        "reserved_coins_total": reserved_total,
+        "available_unreserved_coins": available,
         "rewards": [{
             "id": r["id"],
             "name": r["name"],
@@ -458,13 +471,23 @@ def fetch_rewards(connection):
             "cost": int(r["cost"]),
             "icon": r["icon"],
             "active": bool(r["active"]),
+            "wishlist": bool(r["wishlist"]),
             "sort_order": int(r["sort_order"] or 0),
-            "can_afford": balance >= int(r["cost"]),
+            "can_afford": available >= int(r["cost"]),
+            "coins_missing": max(0, int(r["cost"]) - available),
         } for r in rewards],
         "recent_purchases": [{
             "id": x["id"],
             "reward_id": x["reward_id"],
             "name": x["name"],
+            "quantity": x["quantity"],
+            "total_cost": x["total_cost"],
+            "purchased_at": x["purchased_at"].isoformat(),
+        } for x in recent_purchases],
+        "purchase_history": [{
+            "id": x["id"],
+            "reward_id": x["reward_id"],
+            "reward_name": x["name"],
             "quantity": x["quantity"],
             "total_cost": x["total_cost"],
             "purchased_at": x["purchased_at"].isoformat(),
@@ -481,9 +504,11 @@ def fetch_rewards(connection):
             "target_coins": int(g["target_coins"]),
             "reward_id": g["reward_id"],
             "reward_name": g["reward_name"],
+            "reward_cost": int(g["reward_cost"]) if g["reward_cost"] is not None else None,
             "active": bool(g["active"]),
+            "reserved_coins": int(g["reserved_coins"] or 0),
             "current_coins": balance,
-            "progress_percent": min(100, round((balance / int(g["target_coins"])) * 100)),
+            "progress_percent": min(100, round((balance / int(g["target_coins"])) * 100)) if int(g["target_coins"]) else 0,
             "remaining": max(0, int(g["target_coins"]) - balance),
         } for g in goals],
     }
@@ -1147,7 +1172,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.5.8",
+            "version": "1.6.0",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1757,7 +1782,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.5.8",
+        "version": "1.6.0",
         "schema_version": schema_version,
     }
 
@@ -1975,6 +2000,56 @@ def toggle_savings_goal(
     return {"success": True, "goal_id": goal_id, "active": bool(active)}
 
 
+@app.put("/rewards/{reward_id}/wishlist")
+def update_reward_wishlist(
+    reward_id: int,
+    payload: RewardWishlistUpdate,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+    with engine.begin() as c:
+        result = c.execute(text("""
+            UPDATE rewards SET wishlist=:wishlist WHERE id=:rid
+        """), {"wishlist": 1 if payload.wishlist else 0, "rid": reward_id})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Reward not found")
+    return {"success": True, "reward_id": reward_id, "wishlist": payload.wishlist}
+
+
+@app.put("/savings-goals/{goal_id}/reserve")
+def update_savings_goal_reserve(
+    goal_id: int,
+    payload: SavingsGoalReserveUpdate,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+    if payload.reserved_coins < 0:
+        raise HTTPException(status_code=400, detail="reserved_coins must be >= 0")
+
+    with engine.begin() as c:
+        balance = int(c.execute(
+            text("SELECT COALESCE(SUM(amount),0) FROM coin_ledger")
+        ).scalar_one())
+        other_reserved = int(c.execute(text("""
+            SELECT COALESCE(SUM(reserved_coins),0)
+            FROM savings_goals
+            WHERE active=1 AND id<>:gid
+        """), {"gid": goal_id}).scalar_one())
+
+        if other_reserved + payload.reserved_coins > balance:
+            raise HTTPException(status_code=400, detail="Not enough free coins")
+
+        result = c.execute(text("""
+            UPDATE savings_goals
+            SET reserved_coins=:coins
+            WHERE id=:gid
+        """), {"coins": payload.reserved_coins, "gid": goal_id})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Savings goal not found")
+
+    return {"success": True, "goal_id": goal_id, "reserved_coins": payload.reserved_coins}
+
+
 @app.post("/rewards/{reward_id}/purchase")
 def purchase_reward(
     reward_id: int,
@@ -1998,8 +2073,15 @@ def purchase_reward(
             text("SELECT COALESCE(SUM(amount),0) FROM coin_ledger")
         ).scalar_one())
 
-        if balance < total_cost:
-            raise HTTPException(status_code=400, detail="Not enough coins")
+        reserved = int(c.execute(text("""
+            SELECT COALESCE(SUM(reserved_coins),0)
+            FROM savings_goals
+            WHERE active=1 AND (reward_id IS NULL OR reward_id<>:rid)
+        """), {"rid": reward_id}).scalar_one())
+        available = max(0, balance - reserved)
+
+        if available < total_cost:
+            raise HTTPException(status_code=400, detail="Not enough unreserved coins")
 
         c.execute(text("""
             INSERT INTO reward_purchases(reward_id,quantity,total_cost,purchased_at)
