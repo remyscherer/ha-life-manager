@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.5.4";
-console.info("Life Manager Frontend v1.5.4 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.5.5";
+console.info("Life Manager Frontend v1.5.5 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
