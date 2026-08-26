@@ -1,0 +1,35 @@
+name: "Life Manager"
+description: "Life Manager API, automatischer Tagesabschluss und Quest Editor"
+version: "0.7.0"
+slug: "life_manager"
+init: false
+
+arch:
+  - amd64
+  - aarch64
+
+ports:
+  8000/tcp: 8000
+
+ports_description:
+  8000/tcp: "Life Manager API"
+
+map:
+  - type: homeassistant_config
+    read_only: false
+
+options:
+  mysql_host: "core-mariadb"
+  mysql_port: 3306
+  mysql_database: "life_manager"
+  mysql_user: "life_manager"
+  mysql_password: ""
+  api_key: "change-me"
+
+schema:
+  mysql_host: str
+  mysql_port: port
+  mysql_database: str
+  mysql_user: str
+  mysql_password: password
+  api_key: password

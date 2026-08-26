@@ -1,0 +1,18 @@
+type: vertical-stack
+cards:
+  - type: custom:life-manager-player-card
+    entity: sensor.life_manager
+
+  - type: custom:life-manager-card
+    entity: sensor.life_manager
+    script: script.life_quest_complete
+
+  - type: custom:life-manager-reward-card
+    entity: sensor.life_manager
+    script: script.life_reward_purchase
+
+  - type: custom:life-manager-quest-manager-card
+    entity: sensor.life_manager
+    create_script: script.life_quest_create
+    update_script: script.life_quest_update
+    toggle_script: script.life_quest_toggle

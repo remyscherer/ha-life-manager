@@ -1,0 +1,241 @@
+rest_command:
+  life_complete_quest:
+    url: "http://192.168.0.74:8000/quests/{{ quest_id }}/complete"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >
+      {"overcome": {{ overcome | default(false) | lower }}}
+
+  life_reward_purchase:
+    url: "http://192.168.0.74:8000/rewards/{{ reward_id }}/purchase"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >
+      {"quantity": {{ quantity | default(1) }}}
+
+  life_quest_toggle:
+    url: "http://192.168.0.74:8000/quests/{{ quest_id }}/toggle"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+
+  life_day_finalize:
+    url: "http://192.168.0.74:8000/day/finalize"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+
+  life_quest_create:
+    url: "http://192.168.0.74:8000/quests"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >
+      {
+        "name": {{ name | tojson }},
+        "category_id": {{ category_id | int }},
+        "quest_type": {{ quest_type | tojson }},
+        "description": null,
+        "estimated_minutes": {% if estimated_minutes is not none %}{{ estimated_minutes | int }}{% else %}null{% endif %},
+        "kbr": {% if kbr is not none %}{{ kbr | int }}{% else %}null{% endif %},
+        "xp_mode": {{ xp_mode | tojson }},
+        "fixed_xp": {% if fixed_xp is not none %}{{ fixed_xp | int }}{% else %}null{% endif %},
+        "frequency_days": {% if frequency_days is not none %}{{ frequency_days | int }}{% else %}null{% endif %},
+        "project_factor": null,
+        "active": {{ active | default(true) | lower }},
+        "weekdays": [
+          {% if weekdays %}
+            {% for day in weekdays.split(',') %}
+              {{ day | trim | int }}{% if not loop.last %},{% endif %}
+            {% endfor %}
+          {% endif %}
+        ],
+        "interval_days": {% if interval_days | int > 0 %}{{ interval_days | int }}{% else %}null{% endif %},
+        "next_due": null
+      }
+
+  life_quest_update:
+    url: "http://192.168.0.74:8000/quests/{{ quest_id }}"
+    method: PUT
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >
+      {
+        "name": {{ name | tojson }},
+        "category_id": {{ category_id | int }},
+        "quest_type": {{ quest_type | tojson }},
+        "description": null,
+        "estimated_minutes": {% if estimated_minutes is not none %}{{ estimated_minutes | int }}{% else %}null{% endif %},
+        "kbr": {% if kbr is not none %}{{ kbr | int }}{% else %}null{% endif %},
+        "xp_mode": {{ xp_mode | tojson }},
+        "fixed_xp": {% if fixed_xp is not none %}{{ fixed_xp | int }}{% else %}null{% endif %},
+        "frequency_days": {% if frequency_days is not none %}{{ frequency_days | int }}{% else %}null{% endif %},
+        "project_factor": null,
+        "active": {{ active | default(true) | lower }},
+        "weekdays": [
+          {% if weekdays %}
+            {% for day in weekdays.split(',') %}
+              {{ day | trim | int }}{% if not loop.last %},{% endif %}
+            {% endfor %}
+          {% endif %}
+        ],
+        "interval_days": {% if interval_days | int > 0 %}{{ interval_days | int }}{% else %}null{% endif %},
+        "next_due": null
+      }
+
+rest:
+  - resource: "http://192.168.0.74:8000/dashboard"
+    scan_interval: 60
+    sensor:
+      - name: "Life Manager"
+        unique_id: life_manager
+        value_template: "{{ value_json.today.progress_percent }}"
+        unit_of_measurement: "%"
+        json_attributes:
+          - today
+          - player
+          - training
+          - week
+          - streaks
+          - rewards
+          - quest_manager
+
+script:
+  life_quest_complete:
+    alias: Life Manager - Quest abschließen
+    fields:
+      quest_id:
+        required: true
+        selector:
+          number:
+            min: 1
+            max: 999999
+      overcome:
+        selector:
+          boolean:
+    sequence:
+      - action: rest_command.life_complete_quest
+        data:
+          quest_id: "{{ quest_id }}"
+          overcome: "{{ overcome | default(false) }}"
+
+  life_reward_purchase:
+    alias: Life Manager - Reward kaufen
+    fields:
+      reward_id:
+        required: true
+        selector:
+          number:
+            min: 1
+            max: 999999
+      quantity:
+        selector:
+          number:
+            min: 1
+            max: 20
+    sequence:
+      - action: rest_command.life_reward_purchase
+        data:
+          reward_id: "{{ reward_id }}"
+          quantity: "{{ quantity | default(1) }}"
+
+  life_quest_toggle:
+    alias: Life Manager - Quest aktivieren/deaktivieren
+    fields:
+      quest_id:
+        required: true
+        selector:
+          number:
+            min: 1
+            max: 999999
+    sequence:
+      - action: rest_command.life_quest_toggle
+        data:
+          quest_id: "{{ quest_id }}"
+
+  life_day_finalize:
+    alias: Life Manager - Tagesabschluss
+    sequence:
+      - action: rest_command.life_day_finalize
+      - delay: "00:00:01"
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.life_manager
+
+  life_quest_create:
+    alias: Life Manager - Quest erstellen
+    fields:
+      name: {required: true, selector: {text: {}}}
+      category_id: {required: true, selector: {number: {min: 1, max: 999}}}
+      quest_type: {required: true, selector: {text: {}}}
+      xp_mode: {required: true, selector: {text: {}}}
+      fixed_xp: {selector: {number: {min: 0, max: 9999}}}
+      estimated_minutes: {selector: {number: {min: 0, max: 10000}}}
+      kbr: {selector: {number: {min: 1, max: 5}}}
+      frequency_days: {selector: {number: {min: 1, max: 3650}}}
+      weekdays: {selector: {text: {}}}
+      interval_days: {selector: {number: {min: 0, max: 3650}}}
+      active: {selector: {boolean: {}}}
+    sequence:
+      - action: rest_command.life_quest_create
+        data:
+          name: "{{ name }}"
+          category_id: "{{ category_id }}"
+          quest_type: "{{ quest_type }}"
+          xp_mode: "{{ xp_mode }}"
+          fixed_xp: "{{ fixed_xp | default(none) }}"
+          estimated_minutes: "{{ estimated_minutes | default(none) }}"
+          kbr: "{{ kbr | default(none) }}"
+          frequency_days: "{{ frequency_days | default(none) }}"
+          weekdays: "{{ weekdays | default('') }}"
+          interval_days: "{{ interval_days | default(0) }}"
+          active: "{{ active | default(true) }}"
+
+  life_quest_update:
+    alias: Life Manager - Quest bearbeiten
+    fields:
+      quest_id: {required: true, selector: {number: {min: 1, max: 999999}}}
+      name: {required: true, selector: {text: {}}}
+      category_id: {required: true, selector: {number: {min: 1, max: 999}}}
+      quest_type: {required: true, selector: {text: {}}}
+      xp_mode: {required: true, selector: {text: {}}}
+      fixed_xp: {selector: {number: {min: 0, max: 9999}}}
+      estimated_minutes: {selector: {number: {min: 0, max: 10000}}}
+      kbr: {selector: {number: {min: 1, max: 5}}}
+      frequency_days: {selector: {number: {min: 1, max: 3650}}}
+      weekdays: {selector: {text: {}}}
+      interval_days: {selector: {number: {min: 0, max: 3650}}}
+      active: {selector: {boolean: {}}}
+    sequence:
+      - action: rest_command.life_quest_update
+        data:
+          quest_id: "{{ quest_id }}"
+          name: "{{ name }}"
+          category_id: "{{ category_id }}"
+          quest_type: "{{ quest_type }}"
+          xp_mode: "{{ xp_mode }}"
+          fixed_xp: "{{ fixed_xp | default(none) }}"
+          estimated_minutes: "{{ estimated_minutes | default(none) }}"
+          kbr: "{{ kbr | default(none) }}"
+          frequency_days: "{{ frequency_days | default(none) }}"
+          weekdays: "{{ weekdays | default('') }}"
+          interval_days: "{{ interval_days | default(0) }}"
+          active: "{{ active | default(true) }}"
+
+automation:
+  - id: life_manager_daily_finalize
+    alias: Life Manager - Automatischer Tagesabschluss
+    mode: single
+    trigger:
+      - platform: time
+        at: "23:55:00"
+    action:
+      - action: script.life_day_finalize
