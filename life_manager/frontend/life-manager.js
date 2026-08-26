@@ -1,6 +1,18 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.4.3";
-console.info("Life Manager Frontend v1.4.3 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.5.0";
+console.info("Life Manager Frontend v1.5.0 loaded");
 const LM={
+  apiBase:c=>(c?.api_url||localStorage.getItem("life_manager_api_url")||"http://homeassistant.local:8000").replace(/\/$/,""),
+  async api(c,path,options={}){
+    const base=LM.apiBase(c);
+    const response=await fetch(base+path,{
+      ...options,
+      headers:{"Content-Type":"application/json",...(options.headers||{})},
+      cache:"no-store"
+    });
+    if(!response.ok)throw new Error(`Life Manager API ${response.status}`);
+    return await response.json();
+  },
+
   dataRoot:e=>{
     const attrs=e?.attributes||{};
     return attrs.data||attrs;
@@ -43,6 +55,7 @@ class LifeManagerCard extends HTMLElement{
       entity:LM.entity(c),
       script:c.script||"script.life_quest_complete",
       occurrence_script:c.occurrence_script||"script.life_quest_occurrence",
+      api_url:c.api_url||null,
       title:c.title||"Life Manager"
     };
     this.render();
@@ -70,12 +83,18 @@ class LifeManagerCard extends HTMLElement{
     if(this._busy.has(id))return;
     this._busy.add(id);this.render();
     try{
-      await LM.callScript(this._hass,this._config.occurrence_script,{
-        quest_id:Number(id),
-        action,
-        target_date:targetDate,
-        note:null
-      });
+      const token=sessionStorage.getItem("life_manager_frontend_token");
+      if(token){
+        await LM.api(this._config,`/frontend/quests/${Number(id)}/occurrence`,{
+          method:"POST",
+          headers:{Authorization:`Bearer ${token}`},
+          body:JSON.stringify({action,target_date:targetDate,note:null})
+        });
+      }else{
+        await LM.callScript(this._hass,this._config.occurrence_script,{
+          quest_id:Number(id),action,target_date:targetDate,note:null
+        });
+      }
       await LM.refresh(this._hass,this._config.entity);
     }catch(e){
       alert(e?.message||"Quest konnte nicht verschoben werden.");

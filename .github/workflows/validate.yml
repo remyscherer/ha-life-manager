@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.4.3"' life_manager/config.yaml
+          grep -q 'version: "1.5.0"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -89,3 +89,6 @@ jobs:
     test -f life_manager/migrations/143_bridge_fix.sql
     grep -q 'ha_bridge_base_url' life_manager/config.yaml
     grep -q '__LIFE_MANAGER_BASE_URL__' life_manager/ha_bridge/life_manager_generated.yaml
+
+      - name: Validate v1.5 standalone migration
+        run: test -f life_manager/migrations/150_standalone_frontend.sql

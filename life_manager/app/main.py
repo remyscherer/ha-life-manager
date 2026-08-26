@@ -1,4 +1,6 @@
 import os
+import secrets
+import time
 import logging
 from datetime import date, timedelta
 
@@ -20,7 +22,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.4.3")
+app = FastAPI(title="Life Manager", version="1.5.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -1147,7 +1149,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.4.3",
+            "version": "1.5.0",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1252,7 +1254,28 @@ def change_quest_occurrence(
     quest_id: int,
     payload: QuestOccurrencePayload,
     x_api_key: str | None = Header(default=None)
-):
+)
+
+_frontend_sessions: dict[str, float] = {}
+_FRONTEND_SESSION_TTL = 3600
+
+
+def create_frontend_session():
+    token = secrets.token_urlsafe(32)
+    _frontend_sessions[token] = time.time() + _FRONTEND_SESSION_TTL
+    return token
+
+
+def check_frontend_token(authorization: str | None):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Frontend session required")
+    token = authorization[7:]
+    expires = _frontend_sessions.get(token)
+    if not expires or expires < time.time():
+        _frontend_sessions.pop(token, None)
+        raise HTTPException(status_code=401, detail="Frontend session expired")
+    return token
+:
     check_api_key(x_api_key)
 
     action = payload.action
@@ -1733,6 +1756,90 @@ def fetch_analytics(connection):
     }
 
 
+
+@app.post("/frontend/session")
+def frontend_session(x_api_key: str | None = Header(default=None)):
+    # Bootstrap remains protected by the configured add-on API key.
+    check_api_key(x_api_key)
+    return {
+        "token": create_frontend_session(),
+        "expires_in": _FRONTEND_SESSION_TTL,
+        "version": "1.5.0",
+    }
+
+
+@app.get("/frontend/dashboard")
+def frontend_dashboard():
+    # Dashboard data is intentionally read-only and contains no API secret.
+    with engine.begin() as c:
+        payload = {
+            "today": fetch_today_effective(c),
+            "player": fetch_player(c),
+            "training": fetch_training_week(c),
+            "week": fetch_week(c),
+            "streaks": fetch_streaks(c),
+            "planner": fetch_planner(c),
+            "weekly_review": fetch_weekly_review(c),
+            "weekly_goals": fetch_weekly_goals(c),
+            "day_plan": fetch_day_plan(c),
+            "analytics": fetch_analytics(c),
+            "rewards": fetch_rewards(c),
+            "achievements": fetch_achievements(c),
+            "boss_fights": fetch_boss_fights(c),
+            "quest_manager": fetch_quest_manager(c),
+        }
+        return {"data": payload, "version": "1.5.0"}
+
+
+@app.post("/frontend/quests/{quest_id}/occurrence")
+def frontend_occurrence(
+    quest_id: int,
+    payload: QuestOccurrencePayload,
+    authorization: str | None = Header(default=None)
+):
+    check_frontend_token(authorization)
+    # Reuse occurrence logic without exposing the long-lived API key.
+    action = payload.action
+    if action not in ("skip", "tomorrow", "move", "restore"):
+        raise HTTPException(status_code=400, detail="Invalid occurrence action")
+
+    source_date = date.today()
+    with engine.begin() as c:
+        exists = c.execute(text("SELECT id FROM quests WHERE id=:qid"), {"qid": quest_id}).first()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Quest not found")
+
+        if action == "restore":
+            c.execute(text("""
+                DELETE FROM quest_occurrences
+                WHERE quest_id=:qid AND occurrence_date=:d
+            """), {"qid": quest_id, "d": source_date})
+            return {"success": True, "action": "restore", "quest_id": quest_id}
+
+        if action == "skip":
+            status, target = "skipped", None
+        else:
+            status = "moved"
+            target = source_date + timedelta(days=1) if action == "tomorrow" else payload.target_date
+            if not target:
+                raise HTTPException(status_code=400, detail="target_date required")
+            if target <= source_date:
+                raise HTTPException(status_code=400, detail="target_date must be in the future")
+
+        c.execute(text("""
+            INSERT INTO quest_occurrences
+                (quest_id, occurrence_date, status, moved_to, note)
+            VALUES (:qid,:d,:status,:target,:note)
+            ON DUPLICATE KEY UPDATE
+                status=VALUES(status),moved_to=VALUES(moved_to),note=VALUES(note)
+        """), {
+            "qid": quest_id, "d": source_date, "status": status,
+            "target": target, "note": payload.note
+        })
+    return {"success": True, "action": action, "quest_id": quest_id,
+            "target_date": target.isoformat() if target else None}
+
+
 @app.get("/health")
 def health():
     with engine.connect() as c:
@@ -1746,7 +1853,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.4.3",
+        "version": "1.5.0",
         "schema_version": schema_version,
     }
 

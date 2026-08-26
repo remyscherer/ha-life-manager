@@ -1,6 +1,6 @@
 name: "Life Manager"
 description: "Life Manager API, automatischer Tagesabschluss und Quest Editor"
-version: "1.4.3"
+version: "1.5.0"
 slug: "life_manager"
 init: false
 
@@ -25,7 +25,6 @@ options:
   mysql_user: "life_manager"
   mysql_password: ""
   api_key: "change-me"
-  ha_bridge_base_url: "http://homeassistant.local:8000"
 
 schema:
   mysql_host: str
@@ -34,4 +33,3 @@ schema:
   mysql_user: str
   mysql_password: password
   api_key: password
-  ha_bridge_base_url: str
