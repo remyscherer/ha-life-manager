@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.5.5";
-console.info("Life Manager Frontend v1.5.5 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.5.6";
+console.info("Life Manager Frontend v1.5.6 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -42,7 +42,7 @@ class LifeManagerCard extends HTMLElement{
     this._config={
       entity:LM.entity(c),
       script:c.script||"script.life_quest_complete",
-      occurrence_script:c.occurrence_script||"script.life_quest_occurrence",
+      occurrence_script:c.occurrence_script||"script.life_manager_quest_occurrence",
       title:c.title||"Life Manager"
     };
     this.render();
