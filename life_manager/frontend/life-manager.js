@@ -1,7 +1,8 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.5.1";
-console.info("Life Manager Frontend v1.5.1 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.5.2";
+console.info("Life Manager Frontend v1.5.2 loaded");
 const LM={
-  apiBase:c=>(c?.api_url||localStorage.getItem("life_manager_api_url")||"http://homeassistant.local:8000").replace(/\/$/,""),
+  apiBase:c=>(c?.api_url||window.LIFE_MANAGER_RUNTIME_CONFIG?.api_url||"http://homeassistant.local:8000").replace(/\/$/,""),
+  actionToken:()=>String(window.LIFE_MANAGER_RUNTIME_CONFIG?.action_token||""),
   async api(c,path,options={}){
     const base=LM.apiBase(c);
     const response=await fetch(base+path,{
@@ -67,9 +68,10 @@ class LifeManagerCard extends HTMLElement{
     if(this._busy.has(id))return;
     this._busy.add(id);this.render();
     try{
-      await LM.callScript(this._hass,this._config.script,{
-        quest_id:Number(id),
-        overcome:Boolean(overcome)
+      await LM.api(this._config,`/frontend/quests/${Number(id)}/complete`,{
+        method:"POST",
+        headers:{Authorization:`Bearer ${LM.actionToken()}`},
+        body:JSON.stringify({overcome:Boolean(overcome)})
       });
       await LM.refresh(this._hass,this._config.entity);
     }catch(e){
@@ -83,18 +85,11 @@ class LifeManagerCard extends HTMLElement{
     if(this._busy.has(id))return;
     this._busy.add(id);this.render();
     try{
-      const token=sessionStorage.getItem("life_manager_frontend_token");
-      if(token){
-        await LM.api(this._config,`/frontend/quests/${Number(id)}/occurrence`,{
-          method:"POST",
-          headers:{Authorization:`Bearer ${token}`},
-          body:JSON.stringify({action,target_date:targetDate,note:null})
-        });
-      }else{
-        await LM.callScript(this._hass,this._config.occurrence_script,{
-          quest_id:Number(id),action,target_date:targetDate,note:null
-        });
-      }
+      await LM.api(this._config,`/frontend/quests/${Number(id)}/occurrence`,{
+        method:"POST",
+        headers:{Authorization:`Bearer ${LM.actionToken()}`},
+        body:JSON.stringify({action,target_date:targetDate,note:null})
+      });
       await LM.refresh(this._hass,this._config.entity);
     }catch(e){
       alert(e?.message||"Quest konnte nicht verschoben werden.");

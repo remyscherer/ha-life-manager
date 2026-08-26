@@ -1,10 +1,9 @@
 import os
-import secrets
-import time
 import logging
 from datetime import date, timedelta
 
 from fastapi import FastAPI, HTTPException, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 
@@ -15,6 +14,7 @@ MYSQL_DATABASE = os.environ["MYSQL_DATABASE"]
 MYSQL_USER = os.environ["MYSQL_USER"]
 MYSQL_PASSWORD = os.environ["MYSQL_PASSWORD"]
 API_KEY = os.environ["API_KEY"]
+FRONTEND_ACTION_TOKEN = os.environ.get("FRONTEND_ACTION_TOKEN", "")
 
 DATABASE_URL = (
     f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}"
@@ -22,28 +22,25 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.5.1")
+app = FastAPI(title="Life Manager", version="1.5.2")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 logger = logging.getLogger("life_manager")
 
 
-_frontend_sessions: dict[str, float] = {}
-_FRONTEND_SESSION_TTL = 3600
-
-
-def create_frontend_session():
-    token = secrets.token_urlsafe(32)
-    _frontend_sessions[token] = time.time() + _FRONTEND_SESSION_TTL
-    return token
-
-
 def check_frontend_token(authorization: str | None):
+    if not FRONTEND_ACTION_TOKEN:
+        raise HTTPException(status_code=503, detail="Frontend actions are not configured")
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Frontend session required")
+        raise HTTPException(status_code=401, detail="Frontend action token required")
     token = authorization[7:]
-    expires = _frontend_sessions.get(token)
-    if not expires or expires < time.time():
-        _frontend_sessions.pop(token, None)
-        raise HTTPException(status_code=401, detail="Frontend session expired")
+    if token != FRONTEND_ACTION_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid frontend action token")
     return token
 
 
@@ -1170,7 +1167,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.5.1",
+            "version": "1.5.2",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1757,16 +1754,6 @@ def fetch_analytics(connection):
 
 
 
-@app.post("/frontend/session")
-def frontend_session(x_api_key: str | None = Header(default=None)):
-    # Bootstrap remains protected by the configured add-on API key.
-    check_api_key(x_api_key)
-    return {
-        "token": create_frontend_session(),
-        "expires_in": _FRONTEND_SESSION_TTL,
-        "version": "1.5.1",
-    }
-
 
 @app.get("/frontend/dashboard")
 def frontend_dashboard():
@@ -1788,7 +1775,7 @@ def frontend_dashboard():
             "boss_fights": fetch_boss_fights(c),
             "quest_manager": fetch_quest_manager(c),
         }
-        return {"data": payload, "version": "1.5.1"}
+        return {"data": payload, "version": "1.5.2"}
 
 
 @app.post("/frontend/quests/{quest_id}/occurrence")
@@ -1840,6 +1827,75 @@ def frontend_occurrence(
             "target_date": target.isoformat() if target else None}
 
 
+
+@app.post("/frontend/quests/{quest_id}/complete")
+def frontend_complete_quest(
+    quest_id: int,
+    payload: CompleteQuest,
+    authorization: str | None = Header(default=None)
+):
+    check_frontend_token(authorization)
+
+    with engine.begin() as c:
+        quest = c.execute(text("""
+            SELECT id,name,quest_type,xp_mode,fixed_xp,
+                   estimated_minutes,kbr,frequency_days
+            FROM quests
+            WHERE id=:qid AND active=1
+        """), {"qid": quest_id}).mappings().first()
+
+        if not quest:
+            raise HTTPException(status_code=404, detail="Quest not found")
+
+        existing = c.execute(text("""
+            SELECT id,xp_awarded,willpower_xp
+            FROM quest_completions
+            WHERE quest_id=:qid AND DATE(completed_at)=CURDATE()
+            ORDER BY id DESC LIMIT 1
+        """), {"qid": quest_id}).mappings().first()
+
+        if existing:
+            return {
+                "success": True,
+                "already_completed": True,
+                "quest_id": quest_id,
+                "xp": int(existing["xp_awarded"] or 0),
+                "willpower_xp": int(existing["willpower_xp"] or 0),
+            }
+
+        xp = calculate_quest_xp(quest)
+        wp = (15 if int(quest["kbr"] or 0) >= 5 else 10) if payload.overcome else 0
+
+        result = c.execute(text("""
+            INSERT INTO quest_completions
+            (quest_id,completed_at,xp_awarded,willpower_xp,kbr_at_completion)
+            VALUES(:qid,NOW(),:xp,:wp,:kbr)
+        """), {"qid": quest_id, "xp": xp, "wp": wp, "kbr": quest["kbr"]})
+
+        completion_id = result.lastrowid
+
+        if xp:
+            c.execute(text("""
+                INSERT INTO xp_ledger
+                (amount,xp_type,source_type,source_id,description)
+                VALUES(:amount,'normal','quest_completion',:sid,:description)
+            """), {"amount": xp, "sid": completion_id, "description": quest["name"]})
+
+        if wp:
+            c.execute(text("""
+                INSERT INTO xp_ledger
+                (amount,xp_type,source_type,source_id,description)
+                VALUES(:amount,'willpower','quest_completion',:sid,:description)
+            """), {"amount": wp, "sid": completion_id, "description": f"Overcome: {quest['name']}"})
+
+    return {
+        "success": True,
+        "already_completed": False,
+        "quest_id": quest_id,
+        "xp": xp,
+        "willpower_xp": wp,
+    }
+
 @app.get("/health")
 def health():
     with engine.connect() as c:
@@ -1853,7 +1909,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.5.1",
+        "version": "1.5.2",
         "schema_version": schema_version,
     }
 

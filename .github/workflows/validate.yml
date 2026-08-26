@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.5.1"' life_manager/config.yaml
+          grep -q 'version: "1.5.2"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -99,3 +99,10 @@ jobs:
 
 - name: Validate v1.5.1 hotfix migration
   run: test -f life_manager/migrations/151_startup_syntax_fix.sql
+
+
+- name: Validate v1.5.2 direct frontend actions
+  run: |
+    test -f life_manager/migrations/152_direct_frontend_actions.sql
+    grep -q 'frontend_api_url' life_manager/config.yaml
+    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
