@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="0.7.4")
+app = FastAPI(title="Life Manager", version="0.8.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -484,24 +484,365 @@ def replace_schedules(connection, quest_id: int, payload: QuestPayload):
         """), {"qid": quest_id, "next_due": payload.next_due})
 
 
+
+ACHIEVEMENT_DEFINITIONS = [
+    {
+        "code": "first_quest",
+        "name": "First Step",
+        "description": "Erste Quest abgeschlossen",
+        "icon": "mdi:flag-checkered",
+        "metric": "total_completions",
+        "target": 1,
+    },
+    {
+        "code": "ten_quests",
+        "name": "Getting Things Done",
+        "description": "10 Quests abgeschlossen",
+        "icon": "mdi:check-all",
+        "metric": "total_completions",
+        "target": 10,
+    },
+    {
+        "code": "hundred_quests",
+        "name": "Quest Machine",
+        "description": "100 Quests abgeschlossen",
+        "icon": "mdi:trophy",
+        "metric": "total_completions",
+        "target": 100,
+    },
+    {
+        "code": "ten_trainings",
+        "name": "Training Arc",
+        "description": "10 Trainings abgeschlossen",
+        "icon": "mdi:dumbbell",
+        "metric": "training_completions",
+        "target": 10,
+    },
+    {
+        "code": "fifty_trainings",
+        "name": "Iron Habit",
+        "description": "50 Trainings abgeschlossen",
+        "icon": "mdi:weight-lifter",
+        "metric": "training_completions",
+        "target": 50,
+    },
+    {
+        "code": "first_boss",
+        "name": "Boss Fight",
+        "description": "Erste KBR-5-Quest besiegt",
+        "icon": "mdi:sword-cross",
+        "metric": "boss_completions",
+        "target": 1,
+    },
+    {
+        "code": "ten_bosses",
+        "name": "Boss Hunter",
+        "description": "10 Boss Fights besiegt",
+        "icon": "mdi:shield-sword",
+        "metric": "boss_completions",
+        "target": 10,
+    },
+    {
+        "code": "willpower_100",
+        "name": "Discipline",
+        "description": "100 Willpower XP gesammelt",
+        "icon": "mdi:fire",
+        "metric": "willpower_xp",
+        "target": 100,
+    },
+]
+
+
+def sync_achievements(connection):
+    for item in ACHIEVEMENT_DEFINITIONS:
+        connection.execute(text("""
+            INSERT INTO achievements
+                (code, name, description, icon, metric, target_value, active)
+            VALUES
+                (:code, :name, :description, :icon, :metric, :target, 1)
+            ON DUPLICATE KEY UPDATE
+                name=VALUES(name),
+                description=VALUES(description),
+                icon=VALUES(icon),
+                metric=VALUES(metric),
+                target_value=VALUES(target_value),
+                active=1
+        """), {
+            "code": item["code"],
+            "name": item["name"],
+            "description": item["description"],
+            "icon": item["icon"],
+            "metric": item["metric"],
+            "target": item["target"],
+        })
+
+
+def achievement_metrics(connection):
+    total_completions = int(connection.execute(text(
+        "SELECT COUNT(*) FROM quest_completions"
+    )).scalar_one())
+
+    training_completions = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_completions qc
+        JOIN quests q ON q.id=qc.quest_id
+        WHERE q.quest_type='training'
+    """)).scalar_one())
+
+    boss_completions = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_completions
+        WHERE COALESCE(kbr_at_completion,0) >= 5
+    """)).scalar_one())
+
+    willpower_xp = int(connection.execute(text("""
+        SELECT COALESCE(SUM(amount),0)
+        FROM xp_ledger
+        WHERE xp_type='willpower'
+    """)).scalar_one())
+
+    return {
+        "total_completions": total_completions,
+        "training_completions": training_completions,
+        "boss_completions": boss_completions,
+        "willpower_xp": willpower_xp,
+    }
+
+
+def evaluate_achievements(connection):
+    sync_achievements(connection)
+    metrics = achievement_metrics(connection)
+
+    achievements = connection.execute(text("""
+        SELECT id, code, name, description, icon, metric, target_value
+        FROM achievements
+        WHERE active=1
+        ORDER BY id
+    """)).mappings().all()
+
+    result = []
+
+    for ach in achievements:
+        current = int(metrics.get(ach["metric"], 0))
+        target = int(ach["target_value"])
+        unlocked = current >= target
+
+        existing = connection.execute(text("""
+            SELECT id, unlocked_at
+            FROM achievement_unlocks
+            WHERE achievement_id=:aid
+            LIMIT 1
+        """), {"aid": ach["id"]}).mappings().first()
+
+        if unlocked and not existing:
+            connection.execute(text("""
+                INSERT INTO achievement_unlocks
+                    (achievement_id, unlocked_at)
+                VALUES
+                    (:aid, NOW())
+            """), {"aid": ach["id"]})
+            existing = connection.execute(text("""
+                SELECT id, unlocked_at
+                FROM achievement_unlocks
+                WHERE achievement_id=:aid
+                LIMIT 1
+            """), {"aid": ach["id"]}).mappings().first()
+
+        result.append({
+            "id": ach["id"],
+            "code": ach["code"],
+            "name": ach["name"],
+            "description": ach["description"],
+            "icon": ach["icon"],
+            "metric": ach["metric"],
+            "current": current,
+            "target": target,
+            "progress_percent": min(100, round((current / target) * 100)) if target else 100,
+            "unlocked": bool(existing),
+            "unlocked_at": existing["unlocked_at"].isoformat() if existing and existing["unlocked_at"] else None,
+        })
+
+    return {
+        "unlocked_count": sum(1 for x in result if x["unlocked"]),
+        "total_count": len(result),
+        "achievements": result,
+    }
+
+
+def scheduled_dates_for_quest(connection, quest_id: int, start_date: date, end_date: date):
+    schedules = connection.execute(text("""
+        SELECT weekday, interval_days, next_due
+        FROM quest_schedules
+        WHERE quest_id=:qid
+    """), {"qid": quest_id}).mappings().all()
+
+    result = set()
+
+    for schedule in schedules:
+        weekday = schedule["weekday"]
+        interval_days = schedule["interval_days"]
+        next_due = schedule["next_due"]
+
+        if weekday:
+            d = start_date
+            while d <= end_date:
+                if d.isoweekday() == weekday:
+                    result.add(d)
+                d += timedelta(days=1)
+
+        elif interval_days == 1:
+            d = start_date
+            while d <= end_date:
+                result.add(d)
+                d += timedelta(days=1)
+
+        elif next_due:
+            # Bei allgemeinen Intervallen ist next_due der aktuelle Anker.
+            # Rückwärts und vorwärts vom Anker zählen.
+            step = interval_days or 1
+            anchor = next_due
+            d = anchor
+            while d > start_date:
+                d -= timedelta(days=step)
+            while d <= end_date:
+                if d >= start_date:
+                    result.add(d)
+                d += timedelta(days=step)
+
+    return sorted(result)
+
+
+def calculate_planned_streak(connection, quest_id: int, today_date: date):
+    lookback_start = today_date - timedelta(days=365)
+    planned = scheduled_dates_for_quest(connection, quest_id, lookback_start, today_date)
+
+    if not planned:
+        return 0, 0
+
+    completed_dates = set(connection.execute(text("""
+        SELECT DISTINCT DATE(completed_at)
+        FROM quest_completions
+        WHERE quest_id=:qid
+          AND DATE(completed_at) BETWEEN :start AND :end
+    """), {
+        "qid": quest_id,
+        "start": lookback_start,
+        "end": today_date,
+    }).scalars().all())
+
+    # Best streak = aufeinanderfolgende geplante Termine erledigt.
+    best = 0
+    run = 0
+    for d in planned:
+        if d in completed_dates:
+            run += 1
+            best = max(best, run)
+        else:
+            run = 0
+
+    # Current streak:
+    # Heute darf noch offen sein, ohne dass die Streak schon als gebrochen gilt.
+    relevant = [d for d in planned if d < today_date or d in completed_dates]
+    current = 0
+    for d in reversed(relevant):
+        if d in completed_dates:
+            current += 1
+        else:
+            break
+
+    return current, best
+
+
+def fetch_streaks_v2(connection):
+    today_date = date.today()
+
+    quests = connection.execute(text("""
+        SELECT DISTINCT
+            q.id,
+            q.name,
+            q.quest_type,
+            c.name AS category
+        FROM quests q
+        JOIN categories c ON c.id=q.category_id
+        JOIN quest_schedules qs ON qs.quest_id=q.id
+        WHERE q.active=1
+        ORDER BY c.sort_order, q.id
+    """)).mappings().all()
+
+    result = []
+
+    for quest in quests:
+        current, best = calculate_planned_streak(connection, quest["id"], today_date)
+        result.append({
+            "id": quest["id"],
+            "name": quest["name"],
+            "category": quest["category"],
+            "quest_type": quest["quest_type"],
+            "current_streak": current,
+            "best_streak": best,
+            "streak_type": "planned_completions",
+        })
+
+    return {"streaks": result}
+
+
+def fetch_boss_fights(connection):
+    rows = connection.execute(text("""
+        SELECT
+            q.id,
+            q.name,
+            q.quest_type,
+            q.kbr,
+            q.xp_mode,
+            q.fixed_xp,
+            q.estimated_minutes,
+            q.frequency_days,
+            c.name AS category
+        FROM quests q
+        JOIN categories c ON c.id=q.category_id
+        WHERE q.active=1
+          AND COALESCE(q.kbr,0) >= 5
+        ORDER BY c.sort_order, q.name
+    """)).mappings().all()
+
+    completed_total = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_completions
+        WHERE COALESCE(kbr_at_completion,0) >= 5
+    """)).scalar_one())
+
+    return {
+        "completed_total": completed_total,
+        "active": [{
+            "id": q["id"],
+            "name": q["name"],
+            "category": q["category"],
+            "quest_type": q["quest_type"],
+            "kbr": int(q["kbr"] or 0),
+            "xp": calculate_quest_xp(q),
+        } for q in rows],
+    }
+
 @app.get("/health")
 def health():
     with engine.connect() as c:
         c.execute(text("SELECT 1"))
-    return {"status": "ok", "database": "connected", "version": "0.7.4"}
+    return {"status": "ok", "database": "connected", "version": "0.8.0"}
 
 
 @app.get("/dashboard")
 def dashboard():
-    with engine.connect() as c:
+    with engine.begin() as c:
         return {
             "today": fetch_today(c),
             "player": fetch_player(c),
             "training": fetch_training_week(c),
             "week": fetch_week(c),
-            "streaks": fetch_streaks(c),
+            "streaks": fetch_streaks_v2(c),
             "rewards": fetch_rewards(c),
             "quest_manager": fetch_quest_manager(c),
+            "achievements": evaluate_achievements(c),
+            "boss_fights": fetch_boss_fights(c),
         }
 
 
@@ -780,7 +1121,7 @@ def complete_quest(
             }
 
         xp = calculate_quest_xp(quest)
-        wp = 10 if payload.overcome else 0
+        wp = (15 if int(quest["kbr"] or 0) >= 5 else 10) if payload.overcome else 0
 
         result = c.execute(text("""
             INSERT INTO quest_completions

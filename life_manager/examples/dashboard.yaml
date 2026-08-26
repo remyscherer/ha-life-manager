@@ -16,3 +16,12 @@ cards:
     create_script: script.life_quest_create
     update_script: script.life_quest_update
     toggle_script: script.life_quest_toggle
+
+
+- type: custom:life-manager-achievements-card
+  entity: sensor.life_manager
+  title: Achievements
+
+- type: custom:life-manager-boss-card
+  entity: sensor.life_manager
+  title: Boss Fights

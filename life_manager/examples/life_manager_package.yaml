@@ -99,6 +99,8 @@ rest:
           - streaks
           - rewards
           - quest_manager
+          - achievements
+          - boss_fights
 
 script:
   life_quest_complete:

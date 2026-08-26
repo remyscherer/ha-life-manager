@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="0.7.4";
-console.info("Life Manager Frontend v0.7.4 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="0.8.0";
+console.info("Life Manager Frontend v0.8.0 loaded");
 const LM={
   entity:c=>c.entity||"sensor.life_manager",
   esc:v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"),
@@ -391,6 +391,89 @@ class LifeManagerQuestManagerCard extends HTMLElement{
   }
 }
 
+
+class LifeManagerAchievementsCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Achievements"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+    const d=(e.attributes||{}).achievements||{};
+    const items=Array.isArray(d.achievements)?d.achievements:[];
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .head{display:flex;justify-content:space-between;align-items:center}
+        .score{font-size:24px;font-weight:800}
+        .row{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:11px 0;border-top:1px solid var(--divider-color)}
+        .locked{opacity:.5}
+        .name{font-weight:700}
+        .desc{font-size:12px;opacity:.65}
+        .progress{font-size:12px;font-weight:700}
+      </style>
+      <ha-card>
+        <div class="head">
+          <div><small>🏆 PROGRESS</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div>
+          <div class="score">${Number(d.unlocked_count||0)}/${Number(d.total_count||0)}</div>
+        </div>
+        ${items.map(x=>`
+          <div class="row ${x.unlocked?"":"locked"}">
+            <ha-icon icon="${LM.esc(x.icon||"mdi:trophy-outline")}"></ha-icon>
+            <div>
+              <div class="name">${x.unlocked?"✅ ":""}${LM.esc(x.name)}</div>
+              <div class="desc">${LM.esc(x.description||"")}</div>
+            </div>
+            <div class="progress">${Number(x.current||0)}/${Number(x.target||0)}</div>
+          </div>
+        `).join("")||"<div>Noch keine Achievements vorhanden.</div>"}
+      </ha-card>
+    `;
+  }
+}
+
+class LifeManagerBossCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Boss Fights"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+    const d=(e.attributes||{}).boss_fights||{};
+    const items=Array.isArray(d.active)?d.active:[];
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .head{display:flex;justify-content:space-between;align-items:center}
+        .count{font-size:22px;font-weight:800}
+        .boss{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:11px 0;border-top:1px solid var(--divider-color)}
+        .meta{font-size:12px;opacity:.65}
+        .xp{font-weight:800}
+      </style>
+      <ha-card>
+        <div class="head">
+          <div><small>⚔️ KBR 5</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div>
+          <div class="count">${Number(d.completed_total||0)} besiegt</div>
+        </div>
+        ${items.map(x=>`
+          <div class="boss">
+            <ha-icon icon="mdi:sword-cross"></ha-icon>
+            <div>
+              <b>${LM.esc(x.name)}</b>
+              <div class="meta">${LM.esc(x.category)} · KBR ${Number(x.kbr||5)}</div>
+            </div>
+            <div class="xp">+${Number(x.xp||0)} XP</div>
+          </div>
+        `).join("")||"<div>Aktuell keine aktiven Boss Fights.</div>"}
+      </ha-card>
+    `;
+  }
+}
+
 const defs=[
 ["life-manager-card",LifeManagerCard],
 ["life-manager-player-card",LifeManagerPlayerCard],
@@ -398,6 +481,8 @@ const defs=[
 ["life-manager-streak-card",LifeManagerStreakCard],
 ["life-manager-week-card",LifeManagerWeekCard],
 ["life-manager-reward-card",LifeManagerRewardCard],
-["life-manager-quest-manager-card",LifeManagerQuestManagerCard]
+["life-manager-quest-manager-card",LifeManagerQuestManagerCard],
+["life-manager-achievements-card",LifeManagerAchievementsCard],
+["life-manager-boss-card",LifeManagerBossCard]
 ];
 for(const [n,c] of defs){if(!customElements.get(n))customElements.define(n,c);}
