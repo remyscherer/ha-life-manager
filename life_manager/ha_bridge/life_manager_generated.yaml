@@ -17,6 +17,12 @@ rest_command:
         } | to_json
       }}
 
+  life_manager_bridge_health:
+    url: "__LIFE_MANAGER_BASE_URL__/health"
+    method: GET
+    headers:
+      x-api-key: !secret life_manager_api_key
+
 script:
   life_manager_bridge_test:
     alias: Life Manager - Bridge Test
@@ -24,13 +30,67 @@ script:
     sequence:
       - stop: "Life Manager Bridge wurde erfolgreich geladen"
 
+  life_manager_rest_test:
+    alias: Life Manager - REST Test
+    mode: single
+    sequence:
+      - action: rest_command.life_manager_bridge_health
+
   life_quest_occurrence:
     alias: Life Manager - Quest verschieben oder auslassen
     mode: queued
+    fields:
+      quest_id:
+        name: Quest ID
+        description: ID der Quest
+        required: true
+        selector:
+          number:
+            min: 1
+            max: 999999
+            mode: box
+      action:
+        name: Aktion
+        description: Was mit der heutigen Quest passieren soll
+        required: true
+        selector:
+          select:
+            options:
+              - label: Auf morgen verschieben
+                value: tomorrow
+              - label: Auf Datum verschieben
+                value: move
+              - label: Heute auslassen
+                value: skip
+              - label: Wiederherstellen
+                value: restore
+      target_date:
+        name: Zieldatum
+        description: Nur für die Aktion move erforderlich
+        required: false
+        selector:
+          date:
+      note:
+        name: Notiz
+        required: false
+        selector:
+          text:
+            multiline: false
+
     sequence:
       - action: rest_command.life_manager_bridge_occurrence
         data:
-          quest_id: "{{ quest_id }}"
+          quest_id: "{{ quest_id | int }}"
           action: "{{ action }}"
-          target_date: "{{ target_date | default(none) }}"
-          note: "{{ note | default(none) }}"
+          target_date: >-
+            {% if target_date is defined and target_date not in [none, '', 'None'] %}
+              {{ target_date }}
+            {% else %}
+              {{ none }}
+            {% endif %}
+          note: >-
+            {% if note is defined and note not in [none, '', 'None'] %}
+              {{ note }}
+            {% else %}
+              {{ none }}
+            {% endif %}
