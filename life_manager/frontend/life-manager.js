@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="0.8.0";
-console.info("Life Manager Frontend v0.8.0 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="0.9.0";
+console.info("Life Manager Frontend v0.9.0 loaded");
 const LM={
   entity:c=>c.entity||"sensor.life_manager",
   esc:v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"),
@@ -474,6 +474,180 @@ class LifeManagerBossCard extends HTMLElement{
   }
 }
 
+
+class LifeManagerCoinHistoryCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Coin History"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+    const d=(e.attributes||{}).rewards||{};
+    const items=Array.isArray(d.coin_history)?d.coin_history:[];
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;padding:9px 0;border-top:1px solid var(--divider-color)}
+        .amount{font-weight:800}
+        .pos{color:var(--success-color,#4caf50)}
+        .neg{color:var(--error-color,#f44336)}
+        .time{font-size:11px;opacity:.55}
+      </style>
+      <ha-card>
+        <small>🪙 LEDGER</small>
+        <h2 style="margin:2px 0 12px">${LM.esc(this._config.title)}</h2>
+        ${items.map(x=>`
+          <div class="row">
+            <span class="amount ${Number(x.amount)>=0?"pos":"neg"}">${Number(x.amount)>=0?"+":""}${Number(x.amount)} 🪙</span>
+            <span>${LM.esc(x.reason||"")}</span>
+            <span class="time">${LM.esc((x.created_at||"").replace("T"," ").slice(0,16))}</span>
+          </div>
+        `).join("")||"<div>Noch keine Coin-Bewegungen.</div>"}
+      </ha-card>
+    `;
+  }
+}
+
+class LifeManagerSavingsCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Sparziele",script:c.script||"script.life_savings_goal_create"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  async create(){
+    const name=prompt("Name des Sparziels:");
+    if(!name)return;
+    const target=Number(prompt("Ziel in Coins:","50"));
+    if(!target)return;
+    try{
+      await LM.callScript(this._hass,this._config.script,{name,target_coins:target,reward_id:null});
+      await LM.refresh(this._hass,this._config.entity);
+    }catch(e){alert(e?.message||"Sparziel konnte nicht erstellt werden.");}
+  }
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+    const d=(e.attributes||{}).rewards||{};
+    const goals=Array.isArray(d.savings_goals)?d.savings_goals:[];
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .head{display:flex;justify-content:space-between;align-items:center}
+        .goal{padding:12px 0;border-top:1px solid var(--divider-color)}
+        .goal-head{display:flex;justify-content:space-between;gap:12px}
+        .bar{margin-top:8px}
+        .meta{font-size:12px;opacity:.65;margin-top:4px}
+      </style>
+      <ha-card>
+        <div class="head">
+          <div><small>🎯 SAVINGS</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div>
+          <button id="add-goal">+ Ziel</button>
+        </div>
+        ${goals.map(g=>`
+          <div class="goal">
+            <div class="goal-head">
+              <b>${LM.esc(g.name)}</b>
+              <span>${Number(g.current_coins||0)} / ${Number(g.target_coins||0)} 🪙</span>
+            </div>
+            <div class="bar"><div class="fill" style="width:${Math.min(100,Number(g.progress_percent||0))}%"></div></div>
+            <div class="meta">${Number(g.remaining||0)} Coins fehlen noch</div>
+          </div>
+        `).join("")||"<div>Noch keine Sparziele.</div>"}
+      </ha-card>
+    `;
+    this.shadowRoot.getElementById("add-goal").onclick=()=>this.create();
+  }
+}
+
+class LifeManagerRewardManagerCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});this._editId=null;this._message="";}
+  setConfig(c){
+    this._config={
+      entity:LM.entity(c),
+      title:c.title||"Reward Manager",
+      create_script:c.create_script||"script.life_reward_create",
+      update_script:c.update_script||"script.life_reward_update",
+      toggle_script:c.toggle_script||"script.life_reward_toggle"
+    };
+    this.render();
+  }
+  set hass(h){this._hass=h;this.render();}
+  data(){return (this._hass?.states?.[this._config.entity]?.attributes||{}).rewards||{};}
+  async call(script,variables){await LM.callScript(this._hass,script,variables);await LM.refresh(this._hass,this._config.entity);}
+  edit(id){this._editId=id;this.render();}
+  close(){this._editId=null;this.render();}
+  async save(){
+    const name=this.shadowRoot.getElementById("rm-name").value.trim();
+    const cost=Number(this.shadowRoot.getElementById("rm-cost").value);
+    const description=this.shadowRoot.getElementById("rm-description").value.trim()||null;
+    const icon=this.shadowRoot.getElementById("rm-icon").value.trim()||null;
+    const sort_order=Number(this.shadowRoot.getElementById("rm-sort").value||0);
+    const active=this.shadowRoot.getElementById("rm-active").checked;
+    try{
+      if(this._editId){
+        await this.call(this._config.update_script,{reward_id:this._editId,name,description,cost,icon,sort_order,active});
+      }else{
+        await this.call(this._config.create_script,{name,description,cost,icon,sort_order,active});
+      }
+      this._message="✅ Reward gespeichert.";
+      this._editId=null;
+      this.render();
+    }catch(e){this._message=`❌ ${e?.message||"Fehler"}`;this.render();}
+  }
+  async toggle(id){
+    try{await this.call(this._config.toggle_script,{reward_id:id});this._message="✅ Status geändert.";this.render();}
+    catch(e){this._message=`❌ ${e?.message||"Fehler"}`;this.render();}
+  }
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+    const d=this.data(),rs=Array.isArray(d.rewards)?d.rewards:[];
+    const q=this._editId?rs.find(x=>Number(x.id)===Number(this._editId)):null;
+    const editor=this._editId!==null?`
+      <div class="editor">
+        <h3>${q?"Reward bearbeiten":"Neuer Reward"}</h3>
+        <div class="grid">
+          <label>Name<input id="rm-name" value="${LM.esc(q?.name||"")}"></label>
+          <label>Coins<input id="rm-cost" type="number" min="0" value="${q?.cost??""}"></label>
+          <label class="wide">Beschreibung<textarea id="rm-description">${LM.esc(q?.description||"")}</textarea></label>
+          <label>Icon<input id="rm-icon" value="${LM.esc(q?.icon||"mdi:gift")}"></label>
+          <label>Sortierung<input id="rm-sort" type="number" value="${q?.sort_order??0}"></label>
+          <label class="wide"><input id="rm-active" type="checkbox" ${q?.active===false?"":"checked"}> Aktiv</label>
+        </div>
+        <div class="actions"><button class="secondary" id="rm-cancel">Abbrechen</button><button id="rm-save">Speichern</button></div>
+      </div>`:"";
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .head{display:flex;justify-content:space-between;align-items:center}
+        .row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;border-top:1px solid var(--divider-color);padding:10px 0}
+        .inactive{opacity:.45}
+        .editor{margin:12px 0;padding:12px;background:var(--secondary-background-color);border-radius:12px}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+        .wide{grid-column:1/-1}
+        input,textarea{box-sizing:border-box;width:100%;padding:8px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color)}
+        .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+      </style>
+      <ha-card>
+        <div class="head"><div><small>🛠️ REWARDS</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><button id="rm-new">+ Neuer Reward</button></div>
+        ${this._message?`<div>${LM.esc(this._message)}</div>`:""}
+        ${editor}
+        ${rs.map(r=>`<div class="row ${r.active?"":"inactive"}"><div><b>${LM.esc(r.name)}</b><small>${Number(r.cost)} 🪙</small></div><span>${r.active?"Aktiv":"Aus"}</span><button class="secondary" data-edit="${r.id}">Bearbeiten</button><button class="secondary" data-toggle="${r.id}">${r.active?"Deaktivieren":"Aktivieren"}</button></div>`).join("")}
+      </ha-card>`;
+    this.shadowRoot.getElementById("rm-new").onclick=()=>{this._editId=0;this.render();};
+    this.shadowRoot.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>this.edit(Number(b.dataset.edit)));
+    this.shadowRoot.querySelectorAll("[data-toggle]").forEach(b=>b.onclick=()=>this.toggle(Number(b.dataset.toggle)));
+    if(this._editId!==null){
+      this.shadowRoot.getElementById("rm-save").onclick=()=>this.save();
+      this.shadowRoot.getElementById("rm-cancel").onclick=()=>this.close();
+    }
+  }
+}
+
 const defs=[
 ["life-manager-card",LifeManagerCard],
 ["life-manager-player-card",LifeManagerPlayerCard],
@@ -483,6 +657,9 @@ const defs=[
 ["life-manager-reward-card",LifeManagerRewardCard],
 ["life-manager-quest-manager-card",LifeManagerQuestManagerCard],
 ["life-manager-achievements-card",LifeManagerAchievementsCard],
-["life-manager-boss-card",LifeManagerBossCard]
+["life-manager-boss-card",LifeManagerBossCard],
+["life-manager-coin-history-card",LifeManagerCoinHistoryCard],
+["life-manager-savings-card",LifeManagerSavingsCard],
+["life-manager-reward-manager-card",LifeManagerRewardManagerCard]
 ];
 for(const [n,c] of defs){if(!customElements.get(n))customElements.define(n,c);}

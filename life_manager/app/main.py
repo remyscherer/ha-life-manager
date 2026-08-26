@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="0.8.0")
+app = FastAPI(title="Life Manager", version="0.9.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -30,6 +30,23 @@ class CompleteQuest(BaseModel):
 
 class RewardPurchase(BaseModel):
     quantity: int = Field(default=1, ge=1, le=20)
+
+
+class RewardPayload(BaseModel):
+    name: str
+    description: str | None = None
+    cost: int = Field(ge=0)
+    icon: str | None = None
+    active: bool = True
+    sort_order: int = 0
+
+
+class SavingsGoalPayload(BaseModel):
+    name: str
+    target_coins: int = Field(gt=0)
+    reward_id: int | None = None
+    active: bool = True
+
 
 
 class QuestPayload(BaseModel):
@@ -375,6 +392,7 @@ def fetch_streaks(connection):
     return {"streaks": result}
 
 
+
 def fetch_rewards(connection):
     balance = int(connection.execute(
         text("SELECT COALESCE(SUM(amount),0) FROM coin_ledger")
@@ -383,16 +401,31 @@ def fetch_rewards(connection):
     rewards = connection.execute(text("""
         SELECT id,name,description,cost,icon,active,sort_order
         FROM rewards
-        WHERE active=1
-        ORDER BY sort_order,cost,id
+        ORDER BY active DESC, sort_order, cost, id
     """)).mappings().all()
 
-    recent = connection.execute(text("""
+    recent_purchases = connection.execute(text("""
         SELECT rp.id,rp.reward_id,r.name,rp.quantity,rp.total_cost,rp.purchased_at
         FROM reward_purchases rp
         JOIN rewards r ON r.id=rp.reward_id
         ORDER BY rp.purchased_at DESC
         LIMIT 10
+    """)).mappings().all()
+
+    coin_history = connection.execute(text("""
+        SELECT id, created_at, amount, reason
+        FROM coin_ledger
+        ORDER BY created_at DESC, id DESC
+        LIMIT 20
+    """)).mappings().all()
+
+    goals = connection.execute(text("""
+        SELECT sg.id, sg.name, sg.target_coins, sg.reward_id, sg.active,
+               r.name AS reward_name
+        FROM savings_goals sg
+        LEFT JOIN rewards r ON r.id=sg.reward_id
+        WHERE sg.active=1
+        ORDER BY sg.id
     """)).mappings().all()
 
     return {
@@ -403,6 +436,8 @@ def fetch_rewards(connection):
             "description": r["description"],
             "cost": int(r["cost"]),
             "icon": r["icon"],
+            "active": bool(r["active"]),
+            "sort_order": int(r["sort_order"] or 0),
             "can_afford": balance >= int(r["cost"]),
         } for r in rewards],
         "recent_purchases": [{
@@ -412,7 +447,24 @@ def fetch_rewards(connection):
             "quantity": x["quantity"],
             "total_cost": x["total_cost"],
             "purchased_at": x["purchased_at"].isoformat(),
-        } for x in recent],
+        } for x in recent_purchases],
+        "coin_history": [{
+            "id": x["id"],
+            "created_at": x["created_at"].isoformat() if x["created_at"] else None,
+            "amount": int(x["amount"]),
+            "reason": x["reason"],
+        } for x in coin_history],
+        "savings_goals": [{
+            "id": g["id"],
+            "name": g["name"],
+            "target_coins": int(g["target_coins"]),
+            "reward_id": g["reward_id"],
+            "reward_name": g["reward_name"],
+            "active": bool(g["active"]),
+            "current_coins": balance,
+            "progress_percent": min(100, round((balance / int(g["target_coins"])) * 100)),
+            "remaining": max(0, int(g["target_coins"]) - balance),
+        } for g in goals],
     }
 
 
@@ -827,7 +879,7 @@ def fetch_boss_fights(connection):
 def health():
     with engine.connect() as c:
         c.execute(text("SELECT 1"))
-    return {"status": "ok", "database": "connected", "version": "0.8.0"}
+    return {"status": "ok", "database": "connected", "version": "0.9.0"}
 
 
 @app.get("/dashboard")
@@ -906,6 +958,128 @@ def finalize_day(x_api_key: str | None = Header(default=None)):
         "percentage": current["progress_percent"],
         "coins_awarded": coins,
     }
+
+
+
+@app.post("/rewards")
+def create_reward(
+    payload: RewardPayload,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    with engine.begin() as c:
+        result = c.execute(text("""
+            INSERT INTO rewards
+                (name,description,cost,icon,active,sort_order)
+            VALUES
+                (:name,:description,:cost,:icon,:active,:sort_order)
+        """), payload.model_dump())
+        reward_id = result.lastrowid
+
+    return {"success": True, "reward_id": reward_id}
+
+
+@app.put("/rewards/{reward_id}")
+def update_reward(
+    reward_id: int,
+    payload: RewardPayload,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    with engine.begin() as c:
+        exists = c.execute(
+            text("SELECT id FROM rewards WHERE id=:rid"),
+            {"rid": reward_id}
+        ).first()
+
+        if not exists:
+            raise HTTPException(status_code=404, detail="Reward not found")
+
+        values = payload.model_dump()
+        values["rid"] = reward_id
+
+        c.execute(text("""
+            UPDATE rewards SET
+                name=:name,
+                description=:description,
+                cost=:cost,
+                icon=:icon,
+                active=:active,
+                sort_order=:sort_order
+            WHERE id=:rid
+        """), values)
+
+    return {"success": True, "reward_id": reward_id}
+
+
+@app.post("/rewards/{reward_id}/toggle")
+def toggle_reward(
+    reward_id: int,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    with engine.begin() as c:
+        row = c.execute(
+            text("SELECT active FROM rewards WHERE id=:rid"),
+            {"rid": reward_id}
+        ).mappings().first()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Reward not found")
+
+        active = 0 if row["active"] else 1
+        c.execute(
+            text("UPDATE rewards SET active=:active WHERE id=:rid"),
+            {"active": active, "rid": reward_id}
+        )
+
+    return {"success": True, "reward_id": reward_id, "active": bool(active)}
+
+
+@app.post("/savings-goals")
+def create_savings_goal(
+    payload: SavingsGoalPayload,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    with engine.begin() as c:
+        result = c.execute(text("""
+            INSERT INTO savings_goals
+                (name,target_coins,reward_id,active)
+            VALUES
+                (:name,:target_coins,:reward_id,:active)
+        """), payload.model_dump())
+
+    return {"success": True, "goal_id": result.lastrowid}
+
+
+@app.post("/savings-goals/{goal_id}/toggle")
+def toggle_savings_goal(
+    goal_id: int,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    with engine.begin() as c:
+        row = c.execute(
+            text("SELECT active FROM savings_goals WHERE id=:gid"),
+            {"gid": goal_id}
+        ).mappings().first()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Savings goal not found")
+
+        active = 0 if row["active"] else 1
+        c.execute(
+            text("UPDATE savings_goals SET active=:active WHERE id=:gid"),
+            {"active": active, "gid": goal_id}
+        )
+
+    return {"success": True, "goal_id": goal_id, "active": bool(active)}
 
 
 @app.post("/rewards/{reward_id}/purchase")

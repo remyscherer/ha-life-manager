@@ -25,3 +25,20 @@ cards:
 - type: custom:life-manager-boss-card
   entity: sensor.life_manager
   title: Boss Fights
+
+
+- type: custom:life-manager-savings-card
+  entity: sensor.life_manager
+  title: Sparziele
+  script: script.life_savings_goal_create
+
+- type: custom:life-manager-coin-history-card
+  entity: sensor.life_manager
+  title: Coin History
+
+- type: custom:life-manager-reward-manager-card
+  entity: sensor.life_manager
+  title: Reward Manager
+  create_script: script.life_reward_create
+  update_script: script.life_reward_update
+  toggle_script: script.life_reward_toggle

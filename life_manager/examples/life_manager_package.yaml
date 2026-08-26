@@ -83,6 +83,66 @@ rest_command:
         } | to_json
       }}
 
+  life_reward_create:
+    url: "http://HOME_ASSISTANT_IP:8000/rewards"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >-
+      {{
+        {
+          "name": name,
+          "description": description | default(none),
+          "cost": cost | int,
+          "icon": icon | default(none),
+          "active": active | default(true),
+          "sort_order": sort_order | default(0) | int
+        } | to_json
+      }}
+
+  life_reward_update:
+    url: "http://HOME_ASSISTANT_IP:8000/rewards/{{ reward_id }}"
+    method: PUT
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >-
+      {{
+        {
+          "name": name,
+          "description": description | default(none),
+          "cost": cost | int,
+          "icon": icon | default(none),
+          "active": active | default(true),
+          "sort_order": sort_order | default(0) | int
+        } | to_json
+      }}
+
+  life_reward_toggle:
+    url: "http://HOME_ASSISTANT_IP:8000/rewards/{{ reward_id }}/toggle"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+
+  life_savings_goal_create:
+    url: "http://HOME_ASSISTANT_IP:8000/savings-goals"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >-
+      {{
+        {
+          "name": name,
+          "target_coins": target_coins | int,
+          "reward_id": reward_id | default(none),
+          "active": true
+        } | to_json
+      }}
+
+
 rest:
   - resource: "http://HOME_ASSISTANT_IP:8000/dashboard"
     scan_interval: 60
@@ -235,6 +295,48 @@ script:
           interval_days: "{{ interval_days | default(none) }}"
           next_due: "{{ next_due | default(none) }}"
           active: "{{ active | default(true) }}"
+
+  life_reward_create:
+    alias: Life Manager - Reward erstellen
+    sequence:
+      - action: rest_command.life_reward_create
+        data:
+          name: "{{ name }}"
+          description: "{{ description | default(none) }}"
+          cost: "{{ cost }}"
+          icon: "{{ icon | default(none) }}"
+          active: "{{ active | default(true) }}"
+          sort_order: "{{ sort_order | default(0) }}"
+
+  life_reward_update:
+    alias: Life Manager - Reward bearbeiten
+    sequence:
+      - action: rest_command.life_reward_update
+        data:
+          reward_id: "{{ reward_id }}"
+          name: "{{ name }}"
+          description: "{{ description | default(none) }}"
+          cost: "{{ cost }}"
+          icon: "{{ icon | default(none) }}"
+          active: "{{ active | default(true) }}"
+          sort_order: "{{ sort_order | default(0) }}"
+
+  life_reward_toggle:
+    alias: Life Manager - Reward aktivieren/deaktivieren
+    sequence:
+      - action: rest_command.life_reward_toggle
+        data:
+          reward_id: "{{ reward_id }}"
+
+  life_savings_goal_create:
+    alias: Life Manager - Sparziel erstellen
+    sequence:
+      - action: rest_command.life_savings_goal_create
+        data:
+          name: "{{ name }}"
+          target_coins: "{{ target_coins }}"
+          reward_id: "{{ reward_id | default(none) }}"
+
 
 automation:
   - id: life_manager_daily_finalize
