@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="0.7.3")
+app = FastAPI(title="Life Manager", version="0.7.4")
 logger = logging.getLogger("life_manager")
 
 
@@ -488,7 +488,7 @@ def replace_schedules(connection, quest_id: int, payload: QuestPayload):
 def health():
     with engine.connect() as c:
         c.execute(text("SELECT 1"))
-    return {"status": "ok", "database": "connected", "version": "0.7.3"}
+    return {"status": "ok", "database": "connected", "version": "0.7.4"}
 
 
 @app.get("/dashboard")

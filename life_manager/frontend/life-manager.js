@@ -1,8 +1,28 @@
+window.LIFE_MANAGER_FRONTEND_VERSION="0.7.4";
+console.info("Life Manager Frontend v0.7.4 loaded");
 const LM={
   entity:c=>c.entity||"sensor.life_manager",
   esc:v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"),
   missing:e=>`<ha-card><div style="padding:16px">Sensor ${LM.esc(e)} fehlt.</div></ha-card>`,
-  async refresh(h,e){await new Promise(r=>setTimeout(r,500));await h.callService("homeassistant","update_entity",{entity_id:e});},
+  async refresh(h,e){
+    for(const delay of [250,750,1500]){
+      await new Promise(r=>setTimeout(r,delay));
+      await h.callService("homeassistant","update_entity",{entity_id:e});
+    }
+  },
+  async callScript(h,scriptEntity,variables={}){
+    const parts=String(scriptEntity||"").split(".");
+    if(parts.length===2 && parts[0]==="script"){
+      try{
+        await h.callService("script",parts[1],variables);
+        return;
+      }catch(err){
+        console.warn("Direct script call failed; falling back to script.turn_on",err);
+      }
+    }
+    await h.callService("script","turn_on",{entity_id:scriptEntity,variables});
+    await new Promise(r=>setTimeout(r,1000));
+  },
   styles:()=>`:host{display:block}ha-card{overflow:hidden}.stat{background:var(--secondary-background-color);border-radius:12px;padding:10px}.stat b{display:block;font-size:18px}.stat small{opacity:.65}.bar{height:9px;background:var(--divider-color);border-radius:999px;overflow:hidden}.fill{height:100%;background:var(--primary-color)}button{border:0;border-radius:9px;padding:8px 10px;font-weight:700;cursor:pointer;background:var(--primary-color);color:white}button.secondary{background:var(--secondary-background-color);color:var(--primary-text-color)}button:disabled{opacity:.45}`
 };
 
@@ -10,7 +30,7 @@ class LifeManagerCard extends HTMLElement{
   constructor(){super();this.attachShadow({mode:"open"});this._busy=new Set();}
   setConfig(c){this._config={entity:LM.entity(c),script:c.script||"script.life_quest_complete",title:c.title||"Life Manager"};this.render();}
   set hass(h){this._hass=h;this.render();}
-  async complete(id,o){if(this._busy.has(id))return;this._busy.add(id);this.render();try{await this._hass.callService("script","turn_on",{entity_id:this._config.script,variables:{quest_id:Number(id),overcome:Boolean(o)}});await LM.refresh(this._hass,this._config.entity);}catch(e){alert(e?.message||"Quest konnte nicht abgeschlossen werden.");}finally{this._busy.delete(id);this.render();}}
+  async complete(id,o){if(this._busy.has(id))return;this._busy.add(id);this.render();try{await LM.callScript(this._hass,this._config.script,{quest_id:Number(id),overcome:Boolean(o)});await LM.refresh(this._hass,this._config.entity);}catch(e){alert(e?.message||"Quest konnte nicht abgeschlossen werden.");}finally{this._busy.delete(id);this.render();}}
   render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=(e.attributes||{}).today||{},qs=Array.isArray(d.quests)?d.quests:[],g={};for(const q of qs)(g[q.category||"Sonstiges"]??=[]).push(q);const html=Object.entries(g).map(([cat,items])=>`<h3>${LM.esc(cat)}</h3>${items.map(q=>`<div class="q ${q.completed?"done":""}"><div><b>${LM.esc(q.name)}</b><small>+${Number(q.xp||0)} XP</small></div>${q.completed?`<span>✓</span>`:`<div class="actions"><button data-id="${q.id}" data-o="0">✓</button>${q.quest_type==="training"?`<button class="secondary" data-id="${q.id}" data-o="1">🔥</button>`:""}</div>`}</div>`).join("")}`).join("");this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:end}.pct{font-size:28px;font-weight:800}.bar{margin:12px 0 16px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.q{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--divider-color);padding:10px 0}.q small{display:block;opacity:.65}.done{opacity:.55}.actions{display:flex;gap:6px}@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}</style><ha-card><div class="head"><div><small>HEUTE</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="pct">${Number(d.progress_percent||0)}%</div></div><div class="bar"><div class="fill" style="width:${Math.min(100,Number(d.progress_percent||0))}%"></div></div><div class="stats"><div class="stat"><b>${Number(d.xp_today||0)}/${Number(d.possible_xp||0)}</b><small>XP</small></div><div class="stat"><b>${Number(d.completed_count||0)}/${Number(d.quest_count||0)}</b><small>Quests</small></div><div class="stat"><b>${Number(d.willpower_xp_today||0)}</b><small>Willpower</small></div><div class="stat"><b>${Number(d.projected_coins||0)} 🪙</b><small>Heute</small></div></div>${html}</ha-card>`;this.shadowRoot.querySelectorAll("button[data-id]").forEach(b=>b.onclick=()=>this.complete(Number(b.dataset.id),b.dataset.o==="1"));}
 }
 
@@ -46,7 +66,7 @@ class LifeManagerRewardCard extends HTMLElement{
   constructor(){super();this.attachShadow({mode:"open"});this._busy=null;}
   setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Reward Shop",script:c.script||"script.life_reward_purchase"};this.render();}
   set hass(h){this._hass=h;this.render();}
-  async buy(id){this._busy=id;this.render();try{await this._hass.callService("script","turn_on",{entity_id:this._config.script,variables:{reward_id:Number(id),quantity:1}});await LM.refresh(this._hass,this._config.entity);}catch(e){alert(e?.message||"Reward konnte nicht gekauft werden.");}finally{this._busy=null;this.render();}}
+  async buy(id){this._busy=id;this.render();try{await LM.callScript(this._hass,this._config.script,{reward_id:Number(id),quantity:1});await LM.refresh(this._hass,this._config.entity);}catch(e){alert(e?.message||"Reward konnte nicht gekauft werden.");}finally{this._busy=null;this.render();}}
   render(){if(!this._config)return;const e=this._hass?.states?.[this._config.entity];if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}const d=(e.attributes||{}).rewards||{},rs=Array.isArray(d.rewards)?d.rewards:[];this.shadowRoot.innerHTML=`<style>${LM.styles()}ha-card{padding:18px}.head{display:flex;justify-content:space-between;align-items:center}.balance{font-size:26px;font-weight:800}.reward{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border-top:1px solid var(--divider-color);padding:12px 0}.reward small{display:block;opacity:.65}.cost{font-weight:800}.locked{opacity:.45}</style><ha-card><div class="head"><div><small>🪙 REWARDS</small><h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2></div><div class="balance">${Number(d.coin_balance||0)} 🪙</div></div>${rs.map(x=>`<div class="reward ${x.can_afford?"":"locked"}"><div><b>${LM.esc(x.name)}</b><small>${LM.esc(x.description||"")}</small></div><div class="cost">${Number(x.cost||0)} 🪙</div><button data-buy="${x.id}" ${(!x.can_afford||this._busy===x.id)?"disabled":""}>${this._busy===x.id?"…":"Kaufen"}</button></div>`).join("")||"<div>Keine Rewards angelegt.</div>"}</ha-card>`;this.shadowRoot.querySelectorAll("button[data-buy]").forEach(b=>b.onclick=()=>this.buy(Number(b.dataset.buy)));}
 }
 
@@ -78,7 +98,7 @@ class LifeManagerQuestManagerCard extends HTMLElement{
   }
 
   async call(script,variables){
-    await this._hass.callService("script","turn_on",{entity_id:script,variables});
+    await LM.callScript(this._hass,script,variables);
     await LM.refresh(this._hass,this._config.entity);
   }
 
