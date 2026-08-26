@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="0.9.1";
-console.info("Life Manager Frontend v0.9.1 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.0.0";
+console.info("Life Manager Frontend v1.0.0 loaded");
 const LM={
   entity:c=>c.entity||"sensor.life_manager",
   esc:v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"),
@@ -700,6 +700,116 @@ class LifeManagerQuickActionsCard extends HTMLElement{
   }
 }
 
+
+class LifeManagerPlannerCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Was soll ich jetzt machen?"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+
+    const d=(e.attributes||{}).planner||{};
+    const rec=d.recommendation||null;
+    const focus=Array.isArray(d.focus)?d.focus:[];
+
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .hero{padding:14px;border-radius:14px;background:var(--secondary-background-color);margin-top:10px}
+        .hero-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+        .name{font-size:20px;font-weight:800}
+        .meta,.reason{font-size:12px;opacity:.68;margin-top:5px}
+        .score{font-weight:800;white-space:nowrap}
+        .focus{margin-top:14px}
+        .row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--divider-color)}
+        .rank{font-weight:800;opacity:.65}
+        .empty{opacity:.65;padding:12px 0}
+      </style>
+      <ha-card>
+        <small>🧭 PLANNER</small>
+        <h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2>
+
+        ${rec?`
+          <div class="hero">
+            <div class="hero-head">
+              <div>
+                <div class="name">${rec.boss_fight?"⚔️ ":""}${LM.esc(rec.name)}</div>
+                <div class="meta">${LM.esc(rec.category)} · ${Number(rec.estimated_minutes||0)} Min · KBR ${Number(rec.kbr||1)} · +${Number(rec.xp||0)} XP</div>
+                <div class="reason"><b>Warum:</b> ${LM.esc(rec.reason||"heute sinnvoll")}</div>
+              </div>
+              <div class="score">${Number(rec.score||0)} P</div>
+            </div>
+          </div>
+        `:`<div class="empty">🎉 Aktuell gibt es nichts Dringendes zu empfehlen.</div>`}
+
+        ${focus.length?`
+          <div class="focus">
+            <b>Tagesfokus</b>
+            ${focus.map((x,i)=>`
+              <div class="row">
+                <span class="rank">${i+1}.</span>
+                <span>${LM.esc(x.name)}<div class="meta">${LM.esc(x.reason||"")}</div></span>
+                <span>+${Number(x.xp||0)} XP</span>
+              </div>
+            `).join("")}
+          </div>
+        `:""}
+      </ha-card>
+    `;
+  }
+}
+
+class LifeManagerWeeklyReviewCard extends HTMLElement{
+  constructor(){super();this.attachShadow({mode:"open"});}
+  setConfig(c){this._config={entity:LM.entity(c),title:c.title||"Wochenrückblick"};this.render();}
+  set hass(h){this._hass=h;this.render();}
+  render(){
+    if(!this._config)return;
+    const e=this._hass?.states?.[this._config.entity];
+    if(!e){this.shadowRoot.innerHTML=LM.missing(this._config.entity);return;}
+
+    const d=(e.attributes||{}).weekly_review||{};
+    const insights=Array.isArray(d.insights)?d.insights:[];
+    const focus=Array.isArray(d.next_focus)?d.next_focus:[];
+
+    this.shadowRoot.innerHTML=`
+      <style>
+        ${LM.styles()}
+        ha-card{padding:18px}
+        .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+        .stat{text-align:left}
+        .section{margin-top:14px}
+        .line{padding:7px 0;border-top:1px solid var(--divider-color);font-size:13px}
+        @media(max-width:620px){.stats{grid-template-columns:repeat(2,1fr)}}
+      </style>
+      <ha-card>
+        <small>📝 REVIEW</small>
+        <h2 style="margin:2px 0">${LM.esc(this._config.title)}</h2>
+
+        <div class="stats">
+          <div class="stat"><b>${Number(d.xp_total||0)}</b><small>XP</small></div>
+          <div class="stat"><b>${Number(d.completed_total||0)}</b><small>Quests</small></div>
+          <div class="stat"><b>${Number(d.training_completed||0)}/${Number(d.training_planned||0)}</b><small>Training</small></div>
+          <div class="stat"><b>${Number(d.willpower_xp_total||0)}</b><small>Willpower</small></div>
+        </div>
+
+        <div class="section">
+          <b>Diese Woche</b>
+          ${insights.map(x=>`<div class="line">• ${LM.esc(x)}</div>`).join("")||'<div class="line">Noch zu wenig Daten für einen Rückblick.</div>'}
+        </div>
+
+        <div class="section">
+          <b>Nächster Fokus</b>
+          ${focus.map(x=>`<div class="line">→ ${LM.esc(x)}</div>`).join("")}
+        </div>
+      </ha-card>
+    `;
+  }
+}
+
 const defs=[
 ["life-manager-card",LifeManagerCard],
 ["life-manager-player-card",LifeManagerPlayerCard],
@@ -713,6 +823,8 @@ const defs=[
 ["life-manager-coin-history-card",LifeManagerCoinHistoryCard],
 ["life-manager-savings-card",LifeManagerSavingsCard],
 ["life-manager-reward-manager-card",LifeManagerRewardManagerCard],
-["life-manager-quick-actions-card",LifeManagerQuickActionsCard]
+["life-manager-quick-actions-card",LifeManagerQuickActionsCard],
+["life-manager-planner-card",LifeManagerPlannerCard],
+["life-manager-weekly-review-card",LifeManagerWeeklyReviewCard]
 ];
 for(const [n,c] of defs){if(!customElements.get(n))customElements.define(n,c);}

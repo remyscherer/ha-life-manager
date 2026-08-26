@@ -161,6 +161,8 @@ rest:
           - quest_manager
           - achievements
           - boss_fights
+          - planner
+          - weekly_review
 
 script:
   life_quest_complete:

@@ -48,3 +48,12 @@ cards:
   entity: sensor.life_manager
   title: Quick Actions
   finalize_script: script.life_day_finalize
+
+
+- type: custom:life-manager-planner-card
+  entity: sensor.life_manager
+  title: Was soll ich jetzt machen?
+
+- type: custom:life-manager-weekly-review-card
+  entity: sensor.life_manager
+  title: Wochenrückblick

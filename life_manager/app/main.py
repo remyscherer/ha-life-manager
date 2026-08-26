@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="0.9.1")
+app = FastAPI(title="Life Manager", version="1.0.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -875,6 +875,313 @@ def fetch_boss_fights(connection):
         } for q in rows],
     }
 
+
+def planner_reason(candidate):
+    reasons = []
+
+    if candidate.get("overdue_days", 0) > 0:
+        days = candidate["overdue_days"]
+        reasons.append(f"{days} Tag{'e' if days != 1 else ''} überfällig")
+
+    kbr = int(candidate.get("kbr") or 0)
+    if kbr >= 5:
+        reasons.append("Boss Fight")
+    elif kbr >= 4:
+        reasons.append("hoher Widerstand")
+
+    minutes = int(candidate.get("estimated_minutes") or 0)
+    if 0 < minutes <= 15:
+        reasons.append("schnell erledigt")
+    elif 0 < minutes <= 30:
+        reasons.append("gut einplanbar")
+
+    if candidate.get("quest_type") == "training":
+        reasons.append("geplantes Training")
+
+    if candidate.get("quest_type") in ("habit", "routine"):
+        reasons.append("Routine stabilisieren")
+
+    if not reasons:
+        reasons.append("heute sinnvoll")
+
+    return ", ".join(reasons[:3])
+
+
+def fetch_planner(connection):
+    today_date = date.today()
+    weekday = today_date.isoweekday()
+
+    completed_today = set(connection.execute(text("""
+        SELECT DISTINCT quest_id
+        FROM quest_completions
+        WHERE DATE(completed_at)=:today
+    """), {"today": today_date}).scalars().all())
+
+    rows = connection.execute(text("""
+        SELECT DISTINCT
+            q.id,
+            q.name,
+            q.quest_type,
+            q.description,
+            q.estimated_minutes,
+            q.kbr,
+            q.xp_mode,
+            q.fixed_xp,
+            q.frequency_days,
+            q.project_factor,
+            c.name AS category,
+            c.icon AS category_icon,
+            qs.weekday,
+            qs.interval_days,
+            qs.next_due
+        FROM quests q
+        JOIN categories c ON c.id=q.category_id
+        LEFT JOIN quest_schedules qs ON qs.quest_id=q.id
+        WHERE q.active=1
+          AND c.active=1
+        ORDER BY c.sort_order, q.id
+    """)).mappings().all()
+
+    grouped = {}
+
+    for row in rows:
+        qid = row["id"]
+        if qid in completed_today:
+            continue
+
+        item = grouped.setdefault(qid, {
+            "id": qid,
+            "name": row["name"],
+            "quest_type": row["quest_type"],
+            "description": row["description"],
+            "estimated_minutes": int(row["estimated_minutes"] or 0),
+            "kbr": int(row["kbr"] or 1),
+            "xp_mode": row["xp_mode"],
+            "fixed_xp": row["fixed_xp"],
+            "frequency_days": row["frequency_days"],
+            "project_factor": row["project_factor"],
+            "category": row["category"],
+            "category_icon": row["category_icon"],
+            "scheduled_today": False,
+            "overdue_days": 0,
+            "due_reason": None,
+        })
+
+        if row["weekday"] == weekday:
+            item["scheduled_today"] = True
+            item["due_reason"] = "Heute geplant"
+
+        if row["interval_days"] == 1:
+            item["scheduled_today"] = True
+            item["due_reason"] = "Tägliche Routine"
+
+        if row["next_due"]:
+            delta = (today_date - row["next_due"]).days
+            if delta >= 0:
+                item["scheduled_today"] = True
+                item["overdue_days"] = max(item["overdue_days"], delta)
+                item["due_reason"] = "Überfällig" if delta > 0 else "Heute fällig"
+
+    candidates = []
+
+    for item in grouped.values():
+        # Projekte ohne Schedule dürfen trotzdem als verfügbare Aufgaben
+        # in den Planner kommen, aber mit niedrigerem Basisscore.
+        scheduled = item["scheduled_today"]
+        is_unscheduled_project = item["quest_type"] in ("project", "milestone")
+
+        if not scheduled and not is_unscheduled_project:
+            continue
+
+        xp = calculate_quest_xp(item)
+        kbr = item["kbr"]
+        minutes = item["estimated_minutes"]
+        overdue = item["overdue_days"]
+
+        score = 0.0
+
+        # Fälligkeit ist der stärkste Faktor.
+        score += 30 if scheduled else 5
+        score += min(40, overdue * 8)
+
+        # Hoher Widerstand bewusst belohnen.
+        score += kbr * 6
+
+        # XP gibt Gewicht, darf aber nicht dominieren.
+        score += min(20, xp * 0.6)
+
+        # Kleine Aufgaben sind gute "Jetzt"-Kandidaten.
+        if 0 < minutes <= 10:
+            score += 12
+        elif minutes <= 20 and minutes > 0:
+            score += 8
+        elif minutes <= 45 and minutes > 0:
+            score += 4
+        elif minutes > 90:
+            score -= 6
+
+        # Training an Trainingstagen etwas hervorheben.
+        if item["quest_type"] == "training" and scheduled:
+            score += 10
+
+        # Boss Fight als bewusstes Entwicklungsziel.
+        if kbr >= 5:
+            score += 8
+
+        candidates.append({
+            **item,
+            "xp": xp,
+            "score": round(score, 1),
+            "reason": planner_reason({
+                **item,
+                "xp": xp,
+            }),
+            "boss_fight": kbr >= 5,
+        })
+
+    candidates.sort(key=lambda x: (-x["score"], x["estimated_minutes"] or 9999, x["name"]))
+
+    top = candidates[:3]
+    recommendation = top[0] if top else None
+
+    if recommendation:
+        connection.execute(text("""
+            INSERT INTO planner_history
+                (plan_date, recommendation_quest_id, recommendation_score)
+            VALUES
+                (:d, :qid, :score)
+            ON DUPLICATE KEY UPDATE
+                generated_at=NOW(),
+                recommendation_quest_id=VALUES(recommendation_quest_id),
+                recommendation_score=VALUES(recommendation_score)
+        """), {
+            "d": today_date,
+            "qid": recommendation["id"],
+            "score": recommendation["score"],
+        })
+
+    today = fetch_today(connection)
+
+    return {
+        "date": today_date.isoformat(),
+        "recommendation": recommendation,
+        "focus": top,
+        "open_count": len(candidates),
+        "day_progress_percent": int(today["progress_percent"]),
+        "xp_today": int(today["xp_today"]),
+        "possible_xp": int(today["possible_xp"]),
+        "projected_coins": int(today["projected_coins"]),
+        "algorithm": {
+            "version": "1.0",
+            "description": "Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
+        },
+    }
+
+
+def fetch_weekly_review(connection):
+    week = fetch_week(connection)
+    training = fetch_training_week(connection)
+    streaks = fetch_streaks_v2(connection)
+    achievements = evaluate_achievements(connection)
+
+    days = week["days"]
+    active_days = sum(1 for d in days if d["completed"] > 0)
+    avg_xp = round(week["xp_total"] / 7, 1)
+
+    best_day = None
+    if days:
+        best_day = max(days, key=lambda d: d["xp"])
+
+    boss_count = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_completions
+        WHERE COALESCE(kbr_at_completion,0) >= 5
+          AND YEARWEEK(completed_at, 1)=YEARWEEK(CURDATE(), 1)
+    """)).scalar_one())
+
+    overcome_count = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM quest_completions
+        WHERE COALESCE(willpower_xp,0) > 0
+          AND YEARWEEK(completed_at, 1)=YEARWEEK(CURDATE(), 1)
+    """)).scalar_one())
+
+    insights = []
+
+    if training["planned_count"] > 0:
+        ratio = training["completed_count"] / training["planned_count"]
+        if ratio >= 1:
+            insights.append("Alle geplanten Trainings dieser Woche erledigt.")
+        elif ratio >= 0.6:
+            insights.append("Der Trainingsplan ist überwiegend auf Kurs.")
+        else:
+            insights.append("Beim Training ist diese Woche noch Luft nach oben.")
+
+    if overcome_count >= 3:
+        insights.append(f"{overcome_count} Aufgaben trotz Widerstand erledigt.")
+    elif overcome_count > 0:
+        insights.append(f"{overcome_count} Aufgabe{'n' if overcome_count != 1 else ''} trotz Widerstand erledigt.")
+
+    if boss_count > 0:
+        insights.append(f"{boss_count} Boss Fight{'s' if boss_count != 1 else ''} diese Woche besiegt.")
+
+    if active_days >= 6:
+        insights.append("Sehr konstante Woche mit Aktivität an fast jedem Tag.")
+    elif active_days <= 2:
+        insights.append("Die Woche war bisher eher punktuell statt konstant.")
+
+    strongest_streak = None
+    streak_items = streaks.get("streaks", [])
+    if streak_items:
+        strongest_streak = max(streak_items, key=lambda x: x["current_streak"])
+        if strongest_streak["current_streak"] > 0:
+            insights.append(
+                f"Stärkste aktuelle Streak: {strongest_streak['name']} "
+                f"mit {strongest_streak['current_streak']} geplanten Erfolgen."
+            )
+
+    next_focus = []
+    if training["planned_count"] and training["completed_count"] < training["planned_count"]:
+        next_focus.append("Offene Trainings der Woche abschließen.")
+    if overcome_count == 0:
+        next_focus.append("Eine bewusst unangenehme Aufgabe angehen.")
+    if active_days < 5:
+        next_focus.append("Mehr Konstanz über mehrere Tage verteilen.")
+    if not next_focus:
+        next_focus.append("Aktuelle Routinen stabil halten.")
+
+    return {
+        "week_start": week["week_start"],
+        "xp_total": int(week["xp_total"]),
+        "average_xp_per_day": avg_xp,
+        "completed_total": int(week["completed_total"]),
+        "willpower_xp_total": int(week["willpower_xp_total"]),
+        "active_days": active_days,
+        "training_completed": int(training["completed_count"]),
+        "training_planned": int(training["planned_count"]),
+        "boss_fights": boss_count,
+        "overcome_tasks": overcome_count,
+        "achievements_unlocked": int(achievements["unlocked_count"]),
+        "best_day": best_day,
+        "strongest_streak": strongest_streak,
+        "insights": insights[:5],
+        "next_focus": next_focus[:3],
+    }
+
+
+
+@app.get("/planner")
+def planner():
+    with engine.begin() as c:
+        return fetch_planner(c)
+
+
+@app.get("/weekly-review")
+def weekly_review():
+    with engine.begin() as c:
+        return fetch_weekly_review(c)
+
+
 @app.get("/health")
 def health():
     with engine.connect() as c:
@@ -888,7 +1195,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "0.9.1",
+        "version": "1.0.0",
         "schema_version": schema_version,
     }
 
@@ -906,6 +1213,8 @@ def dashboard():
             "quest_manager": fetch_quest_manager(c),
             "achievements": evaluate_achievements(c),
             "boss_fights": fetch_boss_fights(c),
+            "planner": fetch_planner(c),
+            "weekly_review": fetch_weekly_review(c),
         }
 
 
