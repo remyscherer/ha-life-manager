@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.6.5")
+app = FastAPI(title="Life Manager", version="1.6.6")
 logger = logging.getLogger("life_manager")
 
 
@@ -1179,7 +1179,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.6.5",
+            "version": "1.6.6",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1789,7 +1789,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.6.5",
+        "version": "1.6.6",
         "schema_version": schema_version,
     }
 
@@ -2115,6 +2115,153 @@ def purchase_reward(
         "coins_spent": total_cost,
     }
 
+
+
+
+@app.get("/categories")
+def list_categories():
+    with engine.connect() as c:
+        rows = c.execute(text("""
+            SELECT id,name,icon,sort_order,active
+            FROM categories
+            ORDER BY sort_order,id
+        """)).mappings().all()
+
+    return [{
+        "id": row["id"],
+        "name": row["name"],
+        "icon": row["icon"],
+        "sort_order": int(row["sort_order"] or 0),
+        "active": bool(row["active"]),
+    } for row in rows]
+
+
+@app.post("/categories")
+def create_category(
+    payload: CategoryPayload,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Category name required")
+
+    with engine.begin() as c:
+        duplicate = c.execute(text("""
+            SELECT id
+            FROM categories
+            WHERE LOWER(name)=LOWER(:name)
+        """), {"name": name}).first()
+
+        if duplicate:
+            raise HTTPException(status_code=400, detail="Category already exists")
+
+        result = c.execute(text("""
+            INSERT INTO categories(name,icon,sort_order,active)
+            VALUES(:name,:icon,:sort_order,:active)
+        """), {
+            "name": name,
+            "icon": payload.icon.strip() or "mdi:folder",
+            "sort_order": payload.sort_order,
+            "active": 1 if payload.active else 0,
+        })
+
+    return {
+        "success": True,
+        "category_id": result.lastrowid,
+    }
+
+
+@app.put("/categories/{category_id}")
+def update_category(
+    category_id: int,
+    payload: CategoryPayload,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Category name required")
+
+    with engine.begin() as c:
+        existing = c.execute(text("""
+            SELECT id
+            FROM categories
+            WHERE id=:category_id
+        """), {"category_id": category_id}).first()
+
+        if not existing:
+            raise HTTPException(status_code=404, detail="Category not found")
+
+        duplicate = c.execute(text("""
+            SELECT id
+            FROM categories
+            WHERE LOWER(name)=LOWER(:name)
+              AND id<>:category_id
+        """), {
+            "name": name,
+            "category_id": category_id,
+        }).first()
+
+        if duplicate:
+            raise HTTPException(status_code=400, detail="Category already exists")
+
+        c.execute(text("""
+            UPDATE categories
+            SET name=:name,
+                icon=:icon,
+                sort_order=:sort_order,
+                active=:active
+            WHERE id=:category_id
+        """), {
+            "name": name,
+            "icon": payload.icon.strip() or "mdi:folder",
+            "sort_order": payload.sort_order,
+            "active": 1 if payload.active else 0,
+            "category_id": category_id,
+        })
+
+    return {
+        "success": True,
+        "category_id": category_id,
+    }
+
+
+@app.post("/categories/{category_id}/toggle")
+def toggle_category(
+    category_id: int,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+
+    with engine.begin() as c:
+        row = c.execute(text("""
+            SELECT active
+            FROM categories
+            WHERE id=:category_id
+        """), {"category_id": category_id}).mappings().first()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Category not found")
+
+        new_active = not bool(row["active"])
+
+        c.execute(text("""
+            UPDATE categories
+            SET active=:active
+            WHERE id=:category_id
+        """), {
+            "active": 1 if new_active else 0,
+            "category_id": category_id,
+        })
+
+    return {
+        "success": True,
+        "category_id": category_id,
+        "active": new_active,
+    }
 
 
 @app.get("/quests")

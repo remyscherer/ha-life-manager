@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.6.5";
-console.info("Life Manager Frontend v1.6.5 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.6.6";
+console.info("Life Manager Frontend v1.6.6 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -1441,7 +1441,7 @@ class LifeManagerDashboardCard extends HTMLElement{
           <div class="eyebrow">⚙️ SYSTEM</div>
           <div class="mini-row"><span>Aktive Quests</span><b>${quests.filter(x=>x.active).length}</b></div>
           <div class="mini-row"><span>Kategorien</span><b>${cats.length}</b></div>
-          <div class="mini-row"><span>Frontend</span><b>v1.5.8</b></div>
+          <div class="mini-row"><span>Frontend</span><b>v${LM.esc(window.LIFE_MANAGER_FRONTEND_VERSION||"?")}</b></div>
           <div class="muted info-note">Für das Bearbeiten von Quests und Rewards bleiben die separaten Manager-Karten verfügbar.</div>
         </section>
       </div>
@@ -1856,7 +1856,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.6.5</div>
+          <div class="version">Frontend v1.6.6</div>
         </div>
 
         <div class="tabs">
