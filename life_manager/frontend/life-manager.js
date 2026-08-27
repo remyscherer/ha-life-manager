@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.6.4";
-console.info("Life Manager Frontend v1.6.4 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.6.5";
+console.info("Life Manager Frontend v1.6.5 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -1137,6 +1137,8 @@ class LifeManagerDashboardCard extends HTMLElement{
     this._tab="today";
     this._questEditor=null;
     this._questEditorError="";
+    this._categoryEditor=null;
+    this._categoryEditorError="";
   }
 
   setConfig(c){
@@ -1151,7 +1153,10 @@ class LifeManagerDashboardCard extends HTMLElement{
       quest_toggle_script:c.quest_toggle_script||"script.life_quest_toggle",
       reward_create_script:c.reward_create_script||"script.life_reward_create",
       reward_update_script:c.reward_update_script||"script.life_reward_update",
-      reward_toggle_script:c.reward_toggle_script||"script.life_reward_toggle"
+      reward_toggle_script:c.reward_toggle_script||"script.life_reward_toggle",
+      category_create_script:c.category_create_script||"script.life_manager_category_create",
+      category_update_script:c.category_update_script||"script.life_manager_category_update",
+      category_toggle_script:c.category_toggle_script||"script.life_manager_category_toggle"
     };
     this.render();
   }
@@ -1159,14 +1164,11 @@ class LifeManagerDashboardCard extends HTMLElement{
   set hass(h){
     this._hass=h;
 
-    const form=this.shadowRoot?.getElementById("lm-quest-editor");
+    const questForm=this.shadowRoot?.getElementById("lm-quest-editor");
+    const categoryForm=this.shadowRoot?.getElementById("lm-category-editor");
     const active=this.shadowRoot?.activeElement;
-
-    // Home Assistant refreshes `hass` frequently. Do not rebuild the editor
-    // while the user is actively typing, otherwise the input loses focus.
-    if(this._questEditor && form && active && form.contains(active)){
-      return;
-    }
+    if(this._questEditor && questForm && active && questForm.contains(active)) return;
+    if(this._categoryEditor && categoryForm && active && categoryForm.contains(active)) return;
 
     this.render();
   }
@@ -1452,6 +1454,7 @@ class LifeManagerDashboardCard extends HTMLElement{
     const categories=Array.isArray(qm.categories)?qm.categories:[];
     const rewards=(d.rewards||{}).rewards||[];
     const editor=this._questEditor;
+    const categoryEditor=this._categoryEditor;
     const weekdays=[[1,"Mo"],[2,"Di"],[3,"Mi"],[4,"Do"],[5,"Fr"],[6,"Sa"],[7,"So"]];
 
     const editorHtml=editor?`
@@ -1495,8 +1498,28 @@ class LifeManagerDashboardCard extends HTMLElement{
         </form>
       </section>`:"";
 
+    const categoryEditorHtml=categoryEditor?`
+      <section class="panel span2 editor-panel">
+        <div class="section-head">
+          <div><div class="eyebrow">🗂️ KATEGORIE EDITOR</div><h3>${categoryEditor.id?"Kategorie bearbeiten":"Neue Kategorie"}</h3></div>
+          <button type="button" class="secondary" data-c-cancel>Schließen</button>
+        </div>
+        ${this._categoryEditorError?`<div class="editor-error">${LM.esc(this._categoryEditorError)}</div>`:""}
+        <form id="lm-category-editor" class="editor-grid">
+          <label class="field"><span>Name</span><input name="name" required value="${LM.esc(categoryEditor.name||"")}"></label>
+          <label class="field"><span>MDI Icon</span><input name="icon" value="${LM.esc(categoryEditor.icon||"mdi:folder")}" placeholder="mdi:folder"></label>
+          <label class="field"><span>Sortierung</span><input name="sort_order" type="number" value="${Number(categoryEditor.sort_order||0)}"></label>
+          <label class="switch-field"><input name="active" type="checkbox" ${categoryEditor.active!==false?"checked":""}><span>Kategorie aktiv</span></label>
+          <div class="editor-actions span2">
+            <button type="button" class="secondary" data-c-cancel>Abbrechen</button>
+            <button type="submit">💾 ${categoryEditor.id?"Speichern":"Kategorie anlegen"}</button>
+          </div>
+        </form>
+      </section>`:"";
+
     return `
       ${editorHtml}
+      ${categoryEditorHtml}
       <div class="content-grid">
         <section class="panel span2">
           <div class="section-head">
@@ -1512,6 +1535,23 @@ class LifeManagerDashboardCard extends HTMLElement{
                   <button type="button" class="secondary" data-q-toggle="${q.id}">${q.active?"Deaktivieren":"Aktivieren"}</button>
                 </div>
               </div>`).join("")||'<div class="empty">Keine Quests vorhanden.</div>'}
+          </div>
+        </section>
+
+        <section class="panel span2">
+          <div class="section-head">
+            <div><div class="eyebrow">🗂️ KATEGORIEN</div><h3>Kategorie-Verwaltung</h3></div>
+            <button type="button" data-c-new>+ Neue Kategorie</button>
+          </div>
+          <div class="manager-list">
+            ${categories.map(c=>`
+              <div class="manager-row ${c.active?"":"dim"}">
+                <div class="manager-main"><b>${LM.esc(c.name)}</b><small>${LM.esc(c.icon||"mdi:folder")} · Sortierung ${Number(c.sort_order||0)}</small></div>
+                <div class="manager-actions">
+                  <button type="button" class="secondary" data-c-edit="${c.id}">Bearbeiten</button>
+                  <button type="button" class="secondary" data-c-toggle="${c.id}">${c.active?"Deaktivieren":"Aktivieren"}</button>
+                </div>
+              </div>`).join("")||'<div class="empty">Keine Kategorien vorhanden.</div>'}
           </div>
         </section>
 
@@ -1627,6 +1667,47 @@ class LifeManagerDashboardCard extends HTMLElement{
 
   async toggleQuest(id){
     await this.managerCall(this._config.quest_toggle_script,{quest_id:Number(id)});
+  }
+
+  newCategory(){
+    this._categoryEditorError="";
+    this._categoryEditor={id:null,name:"",icon:"mdi:folder",sort_order:0,active:true};
+    this.render();
+  }
+
+  editCategory(id){
+    const c=(this.root()?.quest_manager?.categories||[]).find(x=>Number(x.id)===Number(id));
+    if(!c)return;
+    this._categoryEditorError="";
+    this._categoryEditor={id:Number(c.id),name:c.name||"",icon:c.icon||"mdi:folder",sort_order:Number(c.sort_order||0),active:c.active!==false};
+    this.render();
+  }
+
+  closeCategoryEditor(){
+    this._categoryEditor=null;
+    this._categoryEditorError="";
+    this.render();
+  }
+
+  syncCategoryEditorDraft(form){
+    if(!this._categoryEditor||!form)return;
+    const fd=new FormData(form);
+    this._categoryEditor={...this._categoryEditor,name:String(fd.get("name")||""),icon:String(fd.get("icon")||"mdi:folder"),sort_order:Number(fd.get("sort_order")||0),active:form.querySelector('input[name="active"]')?.checked!==false};
+  }
+
+  async saveCategory(form){
+    const fd=new FormData(form);
+    const payload={name:String(fd.get("name")||"").trim(),icon:String(fd.get("icon")||"mdi:folder").trim()||"mdi:folder",sort_order:Number(fd.get("sort_order")||0),active:form.querySelector('input[name="active"]').checked};
+    if(!payload.name){this._categoryEditorError="Bitte einen Namen eingeben.";this.render();return;}
+    try{
+      if(this._categoryEditor?.id) await this.managerCall(this._config.category_update_script,{category_id:Number(this._categoryEditor.id),...payload});
+      else await this.managerCall(this._config.category_create_script,payload);
+      this._categoryEditor=null; this._categoryEditorError=""; this.render();
+    }catch(e){this._categoryEditorError=e?.message||"Kategorie konnte nicht gespeichert werden.";this.render();}
+  }
+
+  async toggleCategory(id){
+    await this.managerCall(this._config.category_toggle_script,{category_id:Number(id)});
   }
 
   async newReward(){
@@ -1775,7 +1856,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.6.4</div>
+          <div class="version">Frontend v1.6.5</div>
         </div>
 
         <div class="tabs">
@@ -1809,6 +1890,16 @@ class LifeManagerDashboardCard extends HTMLElement{
       questForm.onchange=()=>this.syncQuestEditorDraft(questForm);
     }
     this.shadowRoot.querySelectorAll("[data-q-toggle]").forEach(b=>b.onclick=()=>this.toggleQuest(b.dataset.qToggle));
+    this.shadowRoot.querySelectorAll("[data-c-new]").forEach(b=>b.onclick=()=>this.newCategory());
+    this.shadowRoot.querySelectorAll("[data-c-edit]").forEach(b=>b.onclick=()=>this.editCategory(b.dataset.cEdit));
+    this.shadowRoot.querySelectorAll("[data-c-toggle]").forEach(b=>b.onclick=()=>this.toggleCategory(b.dataset.cToggle));
+    this.shadowRoot.querySelectorAll("[data-c-cancel]").forEach(b=>b.onclick=()=>this.closeCategoryEditor());
+    const categoryForm=this.shadowRoot.getElementById("lm-category-editor");
+    if(categoryForm){
+      categoryForm.onsubmit=(ev)=>{ev.preventDefault();this.saveCategory(categoryForm);};
+      categoryForm.oninput=()=>this.syncCategoryEditorDraft(categoryForm);
+      categoryForm.onchange=()=>this.syncCategoryEditorDraft(categoryForm);
+    }
     this.shadowRoot.querySelectorAll("[data-r-new]").forEach(b=>b.onclick=()=>this.newReward());
     this.shadowRoot.querySelectorAll("[data-r-edit]").forEach(b=>b.onclick=()=>this.editReward(b.dataset.rEdit));
     this.shadowRoot.querySelectorAll("[data-r-toggle]").forEach(b=>b.onclick=()=>this.toggleReward(b.dataset.rToggle));

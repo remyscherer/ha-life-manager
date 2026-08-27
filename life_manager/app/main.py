@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.6.4")
+app = FastAPI(title="Life Manager", version="1.6.5")
 logger = logging.getLogger("life_manager")
 
 
@@ -72,6 +72,13 @@ class QuestOccurrencePayload(BaseModel):
     target_date: date | str | None = None
     note: str | None = None
 
+
+
+class CategoryPayload(BaseModel):
+    name: str
+    icon: str = "mdi:folder"
+    active: bool = True
+    sort_order: int = 0
 
 
 class QuestPayload(BaseModel):
@@ -1172,7 +1179,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.6.4",
+            "version": "1.6.5",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1782,7 +1789,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.6.4",
+        "version": "1.6.5",
         "schema_version": schema_version,
     }
 
