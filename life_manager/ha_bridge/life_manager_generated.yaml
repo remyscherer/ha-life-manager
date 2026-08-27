@@ -57,7 +57,126 @@ rest_command:
     headers:
       x-api-key: !secret life_manager_api_key
 
+
+  life_manager_quest_create:
+    url: "__LIFE_MANAGER_BASE_URL__/quests"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >-
+      {{
+        {
+          "name": name,
+          "category_id": category_id | int,
+          "quest_type": quest_type | default("routine"),
+          "description": description | default(none),
+          "estimated_minutes": estimated_minutes | default(none),
+          "kbr": kbr | default(none),
+          "xp_mode": xp_mode | default("formula"),
+          "fixed_xp": fixed_xp | default(none),
+          "frequency_days": frequency_days | default(none),
+          "project_factor": project_factor | default(none),
+          "priority": priority | default("normal"),
+          "due_date": due_date | default(none),
+          "active": active | default(true),
+          "weekdays": weekdays | default([]),
+          "interval_days": interval_days | default(none),
+          "next_due": next_due | default(none)
+        } | to_json
+      }}
+
+  life_manager_quest_update:
+    url: "__LIFE_MANAGER_BASE_URL__/quests/{{ quest_id }}"
+    method: PUT
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >-
+      {{
+        {
+          "name": name,
+          "category_id": category_id | int,
+          "quest_type": quest_type | default("routine"),
+          "description": description | default(none),
+          "estimated_minutes": estimated_minutes | default(none),
+          "kbr": kbr | default(none),
+          "xp_mode": xp_mode | default("formula"),
+          "fixed_xp": fixed_xp | default(none),
+          "frequency_days": frequency_days | default(none),
+          "project_factor": project_factor | default(none),
+          "priority": priority | default("normal"),
+          "due_date": due_date | default(none),
+          "active": active | default(true),
+          "weekdays": weekdays | default([]),
+          "interval_days": interval_days | default(none),
+          "next_due": next_due | default(none)
+        } | to_json
+      }}
+
+  life_manager_quest_toggle:
+    url: "__LIFE_MANAGER_BASE_URL__/quests/{{ quest_id }}/toggle"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+
 script:
+
+  life_manager_quest_create:
+    alias: Life Manager - Quest erstellen
+    mode: queued
+    sequence:
+      - action: rest_command.life_manager_quest_create
+        data:
+          name: "{{ name }}"
+          category_id: "{{ category_id | int }}"
+          quest_type: "{{ quest_type | default('routine') }}"
+          description: "{{ description | default(none) }}"
+          estimated_minutes: "{{ estimated_minutes | default(none) }}"
+          kbr: "{{ kbr | default(none) }}"
+          xp_mode: "{{ xp_mode | default('formula') }}"
+          fixed_xp: "{{ fixed_xp | default(none) }}"
+          frequency_days: "{{ frequency_days | default(none) }}"
+          project_factor: "{{ project_factor | default(none) }}"
+          priority: "{{ priority | default('normal') }}"
+          due_date: "{{ due_date | default(none) }}"
+          active: "{{ active | default(true) }}"
+          weekdays: "{{ weekdays | default([]) }}"
+          interval_days: "{{ interval_days | default(none) }}"
+          next_due: "{{ next_due | default(none) }}"
+
+  life_manager_quest_update:
+    alias: Life Manager - Quest bearbeiten
+    mode: queued
+    sequence:
+      - action: rest_command.life_manager_quest_update
+        data:
+          quest_id: "{{ quest_id | int }}"
+          name: "{{ name }}"
+          category_id: "{{ category_id | int }}"
+          quest_type: "{{ quest_type | default('routine') }}"
+          description: "{{ description | default(none) }}"
+          estimated_minutes: "{{ estimated_minutes | default(none) }}"
+          kbr: "{{ kbr | default(none) }}"
+          xp_mode: "{{ xp_mode | default('formula') }}"
+          fixed_xp: "{{ fixed_xp | default(none) }}"
+          frequency_days: "{{ frequency_days | default(none) }}"
+          project_factor: "{{ project_factor | default(none) }}"
+          priority: "{{ priority | default('normal') }}"
+          due_date: "{{ due_date | default(none) }}"
+          active: "{{ active | default(true) }}"
+          weekdays: "{{ weekdays | default([]) }}"
+          interval_days: "{{ interval_days | default(none) }}"
+          next_due: "{{ next_due | default(none) }}"
+
+  life_manager_quest_toggle:
+    alias: Life Manager - Quest aktivieren oder deaktivieren
+    mode: queued
+    sequence:
+      - action: rest_command.life_manager_quest_toggle
+        data:
+          quest_id: "{{ quest_id | int }}"
+
   life_manager_category_create:
     alias: Life Manager - Kategorie erstellen
     mode: queued

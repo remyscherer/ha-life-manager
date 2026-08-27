@@ -13,9 +13,9 @@ cards:
 
   - type: custom:life-manager-quest-manager-card
     entity: sensor.life_manager
-    create_script: script.life_quest_create
-    update_script: script.life_quest_update
-    toggle_script: script.life_quest_toggle
+    create_script: script.life_manager_quest_create
+    update_script: script.life_manager_quest_update
+    toggle_script: script.life_manager_quest_toggle
 
 
 - type: custom:life-manager-achievements-card

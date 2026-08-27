@@ -10,7 +10,7 @@ from sqlalchemy import text
 API_KEY = os.environ["API_KEY"]
 
 from database import engine
-app = FastAPI(title="Life Manager", version="1.7.2")
+app = FastAPI(title="Life Manager", version="1.7.3")
 logger = logging.getLogger("life_manager")
 
 
@@ -1192,7 +1192,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.7.2",
+            "version": "1.7.3",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1346,23 +1346,37 @@ def change_quest_occurrence(
             if target <= source_date:
                 raise HTTPException(status_code=400, detail="target_date must be in the future")
 
-        c.execute(text("""
-            INSERT INTO quest_occurrences
-                (quest_id, occurrence_date, status, moved_to, note)
-            VALUES
-                (:qid, :d, :status, :target, :note)
-            ON CONFLICT(quest_id, occurrence_date) DO UPDATE SET
-                status=excluded.status,
-                moved_to=excluded.moved_to,
-                note=excluded.note,
-                updated_at=NOW()
-        """), {
-            "qid": quest_id,
-            "d": source_date,
-            "status": status,
-            "target": target,
-            "note": payload.note,
-        })
+        source_date_db = source_date.isoformat()
+        target_db = target.isoformat() if target else None
+        note_db = str(payload.note) if payload.note not in (None, "") else None
+
+        try:
+            c.execute(text("""
+                INSERT INTO quest_occurrences
+                    (quest_id, occurrence_date, status, moved_to, note)
+                VALUES
+                    (:qid, :d, :status, :target, :note)
+                ON CONFLICT(quest_id, occurrence_date) DO UPDATE SET
+                    status=excluded.status,
+                    moved_to=excluded.moved_to,
+                    note=excluded.note,
+                    updated_at=NOW()
+            """), {
+                "qid": int(quest_id),
+                "d": source_date_db,
+                "status": str(status),
+                "target": target_db,
+                "note": note_db,
+            })
+        except Exception as exc:
+            logger.exception(
+                "Occurrence write failed: quest_id=%s action=%s source=%s target=%s",
+                quest_id, action, source_date_db, target_db
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Occurrence write failed: {type(exc).__name__}"
+            )
 
     return {
         "success": True,
@@ -1809,7 +1823,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.7.2",
+        "version": "1.7.3",
         "schema_version": schema_version,
     }
 

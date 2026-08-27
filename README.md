@@ -16,7 +16,6 @@ Then install or update **Life Manager** from the Add-on Store.
 
 ## Notes
 
-* No secrets belong in this repository.
-* Keep your `life\_manager\_api\_key` in Home Assistant `secrets.yaml`.
-* Example files use `HOME\_ASSISTANT\_IP` as a placeholder; replace it locally.
-
+- No secrets belong in this repository.
+- Keep your `life_manager_api_key` in Home Assistant `secrets.yaml`.
+- Example files use `HOME_ASSISTANT_IP` as a placeholder; replace it locally.

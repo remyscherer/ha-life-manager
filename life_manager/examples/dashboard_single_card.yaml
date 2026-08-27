@@ -12,9 +12,9 @@ title: Life Manager
 
 
 # Management tab uses these defaults:
-# quest_create_script: script.life_quest_create
-# quest_update_script: script.life_quest_update
-# quest_toggle_script: script.life_quest_toggle
+# quest_create_script: script.life_manager_quest_create
+# quest_update_script: script.life_manager_quest_update
+# quest_toggle_script: script.life_manager_quest_toggle
 # reward_create_script: script.life_reward_create
 # reward_update_script: script.life_reward_update
 # reward_toggle_script: script.life_reward_toggle

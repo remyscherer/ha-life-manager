@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.7.2";
-console.info("Life Manager Frontend v1.7.2 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.7.3";
+console.info("Life Manager Frontend v1.7.3 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -1148,9 +1148,9 @@ class LifeManagerDashboardCard extends HTMLElement{
       complete_script:c.complete_script||"script.life_quest_complete",
       occurrence_script:c.occurrence_script||"script.life_manager_quest_occurrence",
       reward_script:c.reward_script||"script.life_reward_purchase",
-      quest_create_script:c.quest_create_script||"script.life_quest_create",
-      quest_update_script:c.quest_update_script||"script.life_quest_update",
-      quest_toggle_script:c.quest_toggle_script||"script.life_quest_toggle",
+      quest_create_script:c.quest_create_script||"script.life_manager_quest_create",
+      quest_update_script:c.quest_update_script||"script.life_manager_quest_update",
+      quest_toggle_script:c.quest_toggle_script||"script.life_manager_quest_toggle",
       reward_create_script:c.reward_create_script||"script.life_reward_create",
       reward_update_script:c.reward_update_script||"script.life_reward_update",
       reward_toggle_script:c.reward_toggle_script||"script.life_reward_toggle",
@@ -1856,7 +1856,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.7.2</div>
+          <div class="version">Frontend v1.7.3</div>
         </div>
 
         <div class="tabs">
