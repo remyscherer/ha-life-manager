@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.6.6";
-console.info("Life Manager Frontend v1.6.6 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.7.0";
+console.info("Life Manager Frontend v1.7.0 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -1856,7 +1856,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.6.6</div>
+          <div class="version">Frontend v1.7.0</div>
         </div>
 
         <div class="tabs">

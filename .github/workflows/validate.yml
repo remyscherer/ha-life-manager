@@ -1,35 +1,27 @@
 name: Validate Life Manager
-
 on:
   push:
     branches: [main]
   pull_request:
-
 jobs:
   validate:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-
-      - name: Compile backend
-        run: python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
+      - name: Compile Python
+        run: python -m py_compile life_manager/app/main.py life_manager/app/database.py life_manager/app/migrate.py life_manager/app/import_mariadb.py
       - name: Validate frontend
         run: node --check life_manager/frontend/life-manager.js
-
-      - name: Validate v1.6.6
+      - name: Validate v1.7.0 SQLite release
         run: |
-          test -f life_manager/migrations/166_category_api_fix.sql
-          grep -q 'version: "1.6.6"' life_manager/config.yaml
-          grep -q '@app.put("/categories/{category_id}")' life_manager/app/main.py
-          grep -q '@app.post("/categories/{category_id}/toggle")' life_manager/app/main.py
-          grep -q 'LIFE_MANAGER_FRONTEND_VERSION||"?"' life_manager/frontend/life-manager.js
+          test -f life_manager/migrations/170_embedded_sqlite.sql
+          grep -q 'version: "1.7.0"' life_manager/config.yaml
+          grep -q '/data/life_manager.db' life_manager/app/database.py
+          grep -q 'migrate_from_mariadb' life_manager/config.yaml
+          grep -q 'import_mariadb.py' life_manager/run.sh

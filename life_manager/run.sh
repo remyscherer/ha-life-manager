@@ -1,6 +1,8 @@
 #!/usr/bin/with-contenv bashio
 
 export MYSQL_HOST="$(bashio::config 'mysql_host')"
+export LIFE_MANAGER_DB_PATH="/data/life_manager.db"
+export MIGRATE_FROM_MARIADB="$(bashio::config 'migrate_from_mariadb')"
 export MYSQL_PORT="$(bashio::config 'mysql_port')"
 export MYSQL_DATABASE="$(bashio::config 'mysql_database')"
 export MYSQL_USER="$(bashio::config 'mysql_user')"
@@ -39,7 +41,7 @@ bashio::log.info "Nach einer neuen/änderten Bridge ist ein Home Assistant Core 
 
 mkdir -p /homeassistant/www
 
-FRONTEND_VERSION="1.6.6"
+FRONTEND_VERSION="1.7.0"
 FRONTEND_FILE="life-manager-${FRONTEND_VERSION}.js"
 
 cp /frontend/life-manager.js "/homeassistant/www/${FRONTEND_FILE}" || \
@@ -59,15 +61,23 @@ cp /frontend/life-manager.js /homeassistant/www/life-manager.js || \
 bashio::log.info "Frontend ${FRONTEND_VERSION} und Loader nach /config/www aktualisiert."
 
 
-bashio::log.info "Starte Life Manager API v0.7.2"
-
-bashio::log.info "Prüfe Life Manager Datenbankmigrationen..."
+bashio::log.info "Initialisiere eingebettete SQLite-Datenbank..."
 cd /app
 
 if ! python3 migrate.py; then
-  bashio::log.fatal "Datenbankmigration fehlgeschlagen. API wird nicht gestartet."
+  bashio::log.fatal "SQLite-Initialisierung fehlgeschlagen. API wird nicht gestartet."
   exit 1
 fi
 
-bashio::log.info "Starte Life Manager API v1.6.6"
+if [ "${MIGRATE_FROM_MARIADB}" = "true" ] && [ ! -f /data/.mariadb_import_done ]; then
+  bashio::log.info "Prüfe einmalige MariaDB -> SQLite Migration..."
+  if python3 import_mariadb.py; then
+    bashio::log.info "MariaDB-Import abgeschlossen oder nicht erforderlich."
+  else
+    bashio::log.warning "MariaDB-Import meldet einen Prüf-Fehler. Details siehe Log."
+  fi
+fi
+
+bashio::log.info "SQLite-Datenbank: /data/life_manager.db"
+bashio::log.info "Starte Life Manager API v1.7.0"
 exec uvicorn main:app --host 0.0.0.0 --port 8000

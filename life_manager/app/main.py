@@ -4,23 +4,13 @@ from datetime import date, timedelta
 
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 
-MYSQL_HOST = os.environ["MYSQL_HOST"]
-MYSQL_PORT = os.environ.get("MYSQL_PORT", "3306")
-MYSQL_DATABASE = os.environ["MYSQL_DATABASE"]
-MYSQL_USER = os.environ["MYSQL_USER"]
-MYSQL_PASSWORD = os.environ["MYSQL_PASSWORD"]
 API_KEY = os.environ["API_KEY"]
 
-DATABASE_URL = (
-    f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}"
-    f"@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
-)
-
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.6.6")
+from database import engine
+app = FastAPI(title="Life Manager", version="1.7.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -288,7 +278,7 @@ def fetch_training_week(connection):
                CASE WHEN EXISTS (
                  SELECT 1 FROM quest_completions qc
                  WHERE qc.quest_id=q.id
-                   AND DATE(qc.completed_at)=DATE_ADD(:monday, INTERVAL (qs.weekday-1) DAY)
+                   AND DATE(qc.completed_at)=DATE(:monday, printf('+%d days', qs.weekday-1))
                ) THEN 1 ELSE 0 END AS completed
         FROM quests q
         JOIN quest_schedules qs ON qs.quest_id=q.id
@@ -666,12 +656,12 @@ def sync_achievements(connection):
                 (code, name, description, icon, metric, target_value, active)
             VALUES
                 (:code, :name, :description, :icon, :metric, :target, 1)
-            ON DUPLICATE KEY UPDATE
-                name=VALUES(name),
-                description=VALUES(description),
-                icon=VALUES(icon),
-                metric=VALUES(metric),
-                target_value=VALUES(target_value),
+            ON CONFLICT(code) DO UPDATE SET
+                name=excluded.name,
+                description=excluded.description,
+                icon=excluded.icon,
+                metric=excluded.metric,
+                target_value=excluded.target_value,
                 active=1
         """), {
             "code": item["code"],
@@ -1156,10 +1146,10 @@ def fetch_planner(connection, max_minutes: int | None = None):
                 (plan_date, recommendation_quest_id, recommendation_score)
             VALUES
                 (:d, :qid, :score)
-            ON DUPLICATE KEY UPDATE
+            ON CONFLICT(plan_date) DO UPDATE SET
                 generated_at=NOW(),
-                recommendation_quest_id=VALUES(recommendation_quest_id),
-                recommendation_score=VALUES(recommendation_score)
+                recommendation_quest_id=excluded.recommendation_quest_id,
+                recommendation_score=excluded.recommendation_score
         """), {
             "d": today_date,
             "qid": recommendation["id"],
@@ -1179,7 +1169,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.6.6",
+            "version": "1.7.0",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1338,10 +1328,11 @@ def change_quest_occurrence(
                 (quest_id, occurrence_date, status, moved_to, note)
             VALUES
                 (:qid, :d, :status, :target, :note)
-            ON DUPLICATE KEY UPDATE
-                status=VALUES(status),
-                moved_to=VALUES(moved_to),
-                note=VALUES(note)
+            ON CONFLICT(quest_id, occurrence_date) DO UPDATE SET
+                status=excluded.status,
+                moved_to=excluded.moved_to,
+                note=excluded.note,
+                updated_at=NOW()
         """), {
             "qid": quest_id,
             "d": source_date,
@@ -1789,7 +1780,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.6.6",
+        "version": "1.7.0",
         "schema_version": schema_version,
     }
 
@@ -1853,11 +1844,11 @@ def finalize_day(x_api_key: str | None = Header(default=None)):
                  coins_awarded,finalized_at)
             VALUES
                 (:d,:earned,:possible,:pct,:coins,NOW())
-            ON DUPLICATE KEY UPDATE
-                earned_xp=VALUES(earned_xp),
-                possible_xp=VALUES(possible_xp),
-                percentage=VALUES(percentage),
-                coins_awarded=VALUES(coins_awarded),
+            ON CONFLICT(summary_date) DO UPDATE SET
+                earned_xp=excluded.earned_xp,
+                possible_xp=excluded.possible_xp,
+                percentage=excluded.percentage,
+                coins_awarded=excluded.coins_awarded,
                 finalized_at=NOW()
         """), {
             "d": today_date,

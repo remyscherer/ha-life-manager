@@ -1,0 +1,1 @@
+-- v1.7.0 runtime persistence moved to SQLite /data/life_manager.db
