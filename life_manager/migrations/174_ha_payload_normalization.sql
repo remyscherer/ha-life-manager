@@ -1,0 +1,1 @@
+-- v1.7.4 normalizes Home Assistant REST bridge payloads at the API boundary.

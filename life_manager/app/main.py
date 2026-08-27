@@ -3,14 +3,14 @@ import logging
 from datetime import date, timedelta
 
 from fastapi import FastAPI, HTTPException, Header
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 
 
 API_KEY = os.environ["API_KEY"]
 
 from database import engine
-app = FastAPI(title="Life Manager", version="1.7.3")
+app = FastAPI(title="Life Manager", version="1.7.4")
 logger = logging.getLogger("life_manager")
 
 
@@ -35,6 +35,66 @@ def as_date(value):
     # Supports YYYY-MM-DD and timestamps beginning with YYYY-MM-DD.
     return date.fromisoformat(raw[:10])
 
+
+
+
+def normalize_optional(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        raw=value.strip()
+        if raw.lower() in ("", "none", "null", "undefined"):
+            return None
+        return raw
+    return value
+
+
+def normalize_int_optional(value):
+    value=normalize_optional(value)
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    return int(float(value))
+
+
+def normalize_float_optional(value):
+    value=normalize_optional(value)
+    if value is None:
+        return None
+    return float(value)
+
+
+def normalize_date_optional(value):
+    value=normalize_optional(value)
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value).strip()[:10])
+
+
+def normalize_weekdays(value):
+    if value is None:
+        return []
+
+    if isinstance(value, (list, tuple, set)):
+        return [int(x) for x in value if normalize_optional(x) is not None]
+
+    raw=str(value).strip()
+    if raw.lower() in ("", "none", "null", "[]"):
+        return []
+
+    # Home Assistant may stringify a native list as "[1, 3, 5]".
+    if raw.startswith("[") and raw.endswith("]"):
+        raw=raw[1:-1].strip()
+
+    if not raw:
+        return []
+
+    # Also accept old comma separated values for backward compatibility.
+    parts=[x.strip().strip("'\"") for x in raw.split(",")]
+    return [int(x) for x in parts if x and x.lower() not in ("none","null")]
 
 
 class CompleteQuest(BaseModel):
@@ -82,8 +142,19 @@ class WeeklyGoalPayload(BaseModel):
 
 class QuestOccurrencePayload(BaseModel):
     action: str
-    target_date: date | str | None = None
+    target_date: date | None = None
     note: str | None = None
+
+    @field_validator("target_date", mode="before")
+    @classmethod
+    def _normalize_target_date(cls, value):
+        return normalize_date_optional(value)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _normalize_note(cls, value):
+        value=normalize_optional(value)
+        return None if value is None else str(value)
 
 
 
@@ -111,6 +182,35 @@ class QuestPayload(BaseModel):
     weekdays: list[int] = Field(default_factory=list)
     interval_days: int | None = Field(default=None, ge=1)
     next_due: date | None = None
+
+    @field_validator(
+        "estimated_minutes","kbr","fixed_xp","frequency_days","interval_days",
+        mode="before"
+    )
+    @classmethod
+    def _normalize_optional_ints(cls, value):
+        return normalize_int_optional(value)
+
+    @field_validator("project_factor", mode="before")
+    @classmethod
+    def _normalize_project_factor(cls, value):
+        return normalize_float_optional(value)
+
+    @field_validator("due_date","next_due", mode="before")
+    @classmethod
+    def _normalize_optional_dates(cls, value):
+        return normalize_date_optional(value)
+
+    @field_validator("weekdays", mode="before")
+    @classmethod
+    def _normalize_weekdays(cls, value):
+        return normalize_weekdays(value)
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, value):
+        value=normalize_optional(value)
+        return None if value is None else str(value)
 
 
 def check_api_key(x_api_key: str | None):
@@ -1192,7 +1292,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.7.3",
+            "version": "1.7.4",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1305,16 +1405,6 @@ def change_quest_occurrence(
         raise HTTPException(status_code=400, detail="Invalid occurrence action")
 
     target_date = payload.target_date
-    if isinstance(target_date, str):
-        raw_target = target_date.strip()
-        if raw_target.lower() in ("", "none", "null"):
-            target_date = None
-        else:
-            try:
-                target_date = date.fromisoformat(raw_target)
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid target_date")
-
     source_date = date.today()
 
     with engine.begin() as c:
@@ -1823,7 +1913,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.7.3",
+        "version": "1.7.4",
         "schema_version": schema_version,
     }
 

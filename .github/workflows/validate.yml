@@ -14,14 +14,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Compile Python
-        run: python -m py_compile life_manager/app/main.py life_manager/app/database.py life_manager/app/migrate.py life_manager/app/import_mariadb.py
-      - name: Validate frontend
-        run: node --check life_manager/frontend/life-manager.js
-      - name: Validate v1.7.3 bridge
-        run: |
-          test -f life_manager/migrations/173_quest_bridge_sqlite_fix.sql
-          grep -q 'version: "1.7.3"' life_manager/config.yaml
-          grep -q 'life_manager_quest_create' life_manager/ha_bridge/life_manager_generated.yaml
-          grep -q 'script.life_manager_quest_create' life_manager/frontend/life-manager.js
-          if grep -q '\.split(' life_manager/ha_bridge/life_manager_generated.yaml; then exit 1; fi
+      - run: python -m py_compile life_manager/app/main.py life_manager/app/database.py life_manager/app/migrate.py life_manager/app/import_mariadb.py
+      - run: node --check life_manager/frontend/life-manager.js
+      - run: |
+          test -f life_manager/migrations/174_ha_payload_normalization.sql
+          grep -q 'version: "1.7.4"' life_manager/config.yaml
+          grep -q 'normalize_weekdays' life_manager/app/main.py
+          grep -q 'field_validator' life_manager/app/main.py
