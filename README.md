@@ -12,7 +12,7 @@ Then install or update **Life Manager** from the Add-on Store.
 
 ## Current version
 
-**1.6.2**
+**1.6.3**
 
 ## Notes
 

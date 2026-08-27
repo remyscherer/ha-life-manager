@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.6.2";
-console.info("Life Manager Frontend v1.6.2 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.6.3";
+console.info("Life Manager Frontend v1.6.3 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -1135,6 +1135,8 @@ class LifeManagerDashboardCard extends HTMLElement{
     super();
     this.attachShadow({mode:"open"});
     this._tab="today";
+    this._questEditor=null;
+    this._questEditorError="";
   }
 
   setConfig(c){
@@ -1437,77 +1439,87 @@ class LifeManagerDashboardCard extends HTMLElement{
   renderManagement(d){
     const qm=d.quest_manager||{};
     const quests=Array.isArray(qm.quests)?qm.quests:[];
+    const categories=Array.isArray(qm.categories)?qm.categories:[];
     const rewards=(d.rewards||{}).rewards||[];
+    const editor=this._questEditor;
+    const weekdays=[[1,"Mo"],[2,"Di"],[3,"Mi"],[4,"Do"],[5,"Fr"],[6,"Sa"],[7,"So"]];
+
+    const editorHtml=editor?`
+      <section class="panel span2 editor-panel">
+        <div class="section-head">
+          <div><div class="eyebrow">✏️ QUEST EDITOR</div><h3>${editor.id?"Quest bearbeiten":"Neue Quest"}</h3></div>
+          <button type="button" class="secondary" data-q-cancel>Schließen</button>
+        </div>
+        ${this._questEditorError?`<div class="editor-error">${LM.esc(this._questEditorError)}</div>`:""}
+        <form id="lm-quest-editor" class="editor-grid">
+          <label class="field span2"><span>Name</span><input name="name" required value="${LM.esc(editor.name||"")}"></label>
+          <label class="field"><span>Kategorie</span><select name="category_id" required>
+            ${categories.map(c=>`<option value="${c.id}" ${Number(editor.category_id)===Number(c.id)?"selected":""}>${LM.esc(c.name)}</option>`).join("")}
+          </select></label>
+          <label class="field"><span>Quest-Typ</span><select name="quest_type">
+            ${[["routine","Routine"],["habit","Gewohnheit"],["training","Training"],["project","Projekt"],["milestone","Meilenstein"]].map(([v,l])=>`<option value="${v}" ${editor.quest_type===v?"selected":""}>${l}</option>`).join("")}
+          </select></label>
+          <label class="field"><span>Priorität</span><select name="priority">
+            ${[["low","Niedrig"],["normal","Normal"],["high","Hoch"],["critical","Kritisch"]].map(([v,l])=>`<option value="${v}" ${(editor.priority||"normal")===v?"selected":""}>${l}</option>`).join("")}
+          </select></label>
+          <label class="field"><span>KBR</span><select name="kbr">
+            ${[1,2,3,4,5].map(v=>`<option value="${v}" ${Number(editor.kbr||1)===v?"selected":""}>${v}</option>`).join("")}
+          </select></label>
+          <label class="field"><span>Dauer (Minuten)</span><input name="estimated_minutes" type="number" min="0" max="1440" value="${Number(editor.estimated_minutes||0)}"></label>
+          <label class="field"><span>Fällig am</span><input name="due_date" type="date" value="${LM.esc(editor.due_date||"")}"></label>
+          <label class="field"><span>XP-Modus</span><select name="xp_mode">
+            <option value="fixed" ${(editor.xp_mode||"fixed")==="fixed"?"selected":""}>Feste XP</option>
+            <option value="formula" ${editor.xp_mode==="formula"?"selected":""}>Berechnet</option>
+          </select></label>
+          <label class="field"><span>Feste XP</span><input name="fixed_xp" type="number" min="0" max="10000" value="${Number(editor.fixed_xp??1)}"></label>
+          <label class="field span2"><span>Beschreibung</span><textarea name="description" rows="3">${LM.esc(editor.description||"")}</textarea></label>
+          <fieldset class="field span2 weekday-field"><legend>Wochentage</legend>
+            <div class="weekday-grid">${weekdays.map(([v,l])=>`<label class="weekday"><input type="checkbox" name="weekday" value="${v}" ${(editor.weekdays||[]).map(Number).includes(v)?"checked":""}><span>${l}</span></label>`).join("")}</div>
+            <small>Leer lassen, wenn keine festen Wochentage gelten.</small>
+          </fieldset>
+          <label class="switch-field span2"><input name="active" type="checkbox" ${editor.active!==false?"checked":""}><span>Quest aktiv</span></label>
+          <div class="editor-actions span2">
+            <button type="button" class="secondary" data-q-cancel>Abbrechen</button>
+            <button type="submit">💾 ${editor.id?"Speichern":"Quest anlegen"}</button>
+          </div>
+        </form>
+      </section>`:"";
 
     return `
+      ${editorHtml}
       <div class="content-grid">
         <section class="panel span2">
           <div class="section-head">
-            <div>
-              <div class="eyebrow">🧩 QUESTS</div>
-              <h3>Quest-Verwaltung</h3>
-            </div>
+            <div><div class="eyebrow">🧩 QUESTS</div><h3>Quest-Verwaltung</h3></div>
+            <button type="button" data-q-new>+ Neue Quest</button>
           </div>
-
           <div class="manager-list">
             ${quests.map(q=>`
               <div class="manager-row ${q.active?"":"dim"}">
-                <div class="manager-main">
-                  <b>${LM.esc(q.name)}</b>
-                  <small>
-                    ${LM.esc(q.category||"")} ·
-                    ${LM.esc(q.quest_type||"")} ·
-                    KBR ${Number(q.kbr||0)} ·
-                    ${LM.esc(q.priority||"normal")}
-                    ${q.due_date?` · fällig ${LM.esc(q.due_date)}`:""}
-                  </small>
-                </div>
+                <div class="manager-main"><b>${LM.esc(q.name)}</b><small>${LM.esc(q.category||"")} · ${LM.esc(q.quest_type||"")} · KBR ${Number(q.kbr||0)} · ${LM.esc(q.priority||"normal")}${q.due_date?` · fällig ${LM.esc(q.due_date)}`:""}</small></div>
                 <div class="manager-actions">
                   <button type="button" class="secondary" data-q-edit="${q.id}">Bearbeiten</button>
-                  <button type="button" class="secondary" data-q-toggle="${q.id}">
-                    ${q.active?"Deaktivieren":"Aktivieren"}
-                  </button>
+                  <button type="button" class="secondary" data-q-toggle="${q.id}">${q.active?"Deaktivieren":"Aktivieren"}</button>
                 </div>
-              </div>
-            `).join("")||'<div class="empty">Keine Quests vorhanden.</div>'}
-          </div>
-
-          <div class="manager-footer">
-            <button type="button" data-q-new>+ Neue Quest</button>
+              </div>`).join("")||'<div class="empty">Keine Quests vorhanden.</div>'}
           </div>
         </section>
 
         <section class="panel span2">
-          <div class="section-head">
-            <div>
-              <div class="eyebrow">🎁 REWARDS</div>
-              <h3>Reward-Verwaltung</h3>
-            </div>
-          </div>
-
+          <div class="section-head"><div><div class="eyebrow">🎁 REWARDS</div><h3>Reward-Verwaltung</h3></div></div>
           <div class="manager-list">
             ${rewards.map(r=>`
               <div class="manager-row ${r.active?"":"dim"}">
-                <div class="manager-main">
-                  <b>${r.wishlist?"⭐ ":""}${LM.esc(r.name)}</b>
-                  <small>${Number(r.cost||0)} 🪙 · ${LM.esc(r.description||"")}</small>
-                </div>
+                <div class="manager-main"><b>${r.wishlist?"⭐ ":""}${LM.esc(r.name)}</b><small>${Number(r.cost||0)} 🪙 · ${LM.esc(r.description||"")}</small></div>
                 <div class="manager-actions">
                   <button type="button" class="secondary" data-r-edit="${r.id}">Bearbeiten</button>
-                  <button type="button" class="secondary" data-r-toggle="${r.id}">
-                    ${r.active?"Deaktivieren":"Aktivieren"}
-                  </button>
+                  <button type="button" class="secondary" data-r-toggle="${r.id}">${r.active?"Deaktivieren":"Aktivieren"}</button>
                 </div>
-              </div>
-            `).join("")||'<div class="empty">Keine Rewards vorhanden.</div>'}
+              </div>`).join("")||'<div class="empty">Keine Rewards vorhanden.</div>'}
           </div>
-
-          <div class="manager-footer">
-            <button type="button" data-r-new>+ Neuer Reward</button>
-          </div>
+          <div class="manager-footer"><button type="button" data-r-new>+ Neuer Reward</button></div>
         </section>
-      </div>
-    `;
+      </div>`;
   }
 
   async managerCall(script,variables){
@@ -1515,63 +1527,72 @@ class LifeManagerDashboardCard extends HTMLElement{
     await LM.refresh(this._hass,this._config.entity);
   }
 
-  async newQuest(){
-    const name=prompt("Name der neuen Quest:");
-    if(!name)return;
-    const categoryId=Number(prompt("Kategorie-ID:","1"));
-    if(!categoryId)return;
-    const type=prompt("Quest-Typ:","routine")||"routine";
-    const minutes=Number(prompt("Geschätzte Minuten:","15")||0);
-    const kbr=Number(prompt("KBR 1-5:","3")||3);
-    const fixedXp=Number(prompt("Feste XP:","1")||1);
-
-    await this.managerCall(this._config.quest_create_script,{
-      name,
-      category_id:categoryId,
-      quest_type:type,
-      description:null,
-      estimated_minutes:minutes,
-      kbr,
-      xp_mode:"fixed",
-      fixed_xp:fixedXp,
-      frequency_days:null,
-      project_factor:null,
-      priority:"normal",
-      due_date:null,
-      weekdays:[],
-      active:true
-    });
+  newQuest(){
+    const d=this.root();
+    const categories=d?.quest_manager?.categories||[];
+    this._questEditorError="";
+    this._questEditor={
+      id:null,name:"",category_id:categories[0]?.id??null,quest_type:"routine",
+      description:"",estimated_minutes:15,kbr:3,xp_mode:"fixed",fixed_xp:1,
+      frequency_days:null,project_factor:null,priority:"normal",due_date:"",
+      weekdays:[],active:true
+    };
+    this.render();
   }
 
-  async editQuest(id){
+  editQuest(id){
     const d=this.root();
     const q=(d?.quest_manager?.quests||[]).find(x=>Number(x.id)===Number(id));
     if(!q)return;
-
-    const name=prompt("Quest-Name:",q.name);
-    if(!name)return;
-    const minutes=Number(prompt("Minuten:",String(q.estimated_minutes??0))||0);
-    const kbr=Number(prompt("KBR 1-5:",String(q.kbr??3))||3);
-    const priority=prompt("Priorität (low/normal/high/critical):",q.priority||"normal")||"normal";
-
-    await this.managerCall(this._config.quest_update_script,{
-      quest_id:Number(id),
-      name,
-      category_id:Number(q.category_id||1),
-      quest_type:q.quest_type||"routine",
-      description:q.description||null,
-      estimated_minutes:minutes,
-      kbr,
-      xp_mode:q.xp_mode||"fixed",
-      fixed_xp:q.fixed_xp??1,
-      frequency_days:q.frequency_days??null,
-      project_factor:q.project_factor??null,
-      priority,
-      due_date:q.due_date||null,
-      weekdays:q.weekdays||[],
-      active:q.active!==false
-    });
+    this._questEditorError="";
+    this._questEditor={...q,id:Number(q.id),category_id:Number(q.category_id||0),
+      weekdays:Array.isArray(q.weekdays)?q.weekdays.map(Number):[],
+      due_date:q.due_date||"",description:q.description||""};
+    this.render();
   }
+
+  closeQuestEditor(){
+    this._questEditor=null;
+    this._questEditorError="";
+    this.render();
+  }
+
+  async saveQuest(form){
+    const fd=new FormData(form);
+    const payload={
+      name:String(fd.get("name")||"").trim(),
+      category_id:Number(fd.get("category_id")),
+      quest_type:String(fd.get("quest_type")||"routine"),
+      description:String(fd.get("description")||"").trim()||null,
+      estimated_minutes:Number(fd.get("estimated_minutes")||0),
+      kbr:Number(fd.get("kbr")||1),
+      xp_mode:String(fd.get("xp_mode")||"fixed"),
+      fixed_xp:Number(fd.get("fixed_xp")||0),
+      frequency_days:this._questEditor?.frequency_days??null,
+      project_factor:this._questEditor?.project_factor??null,
+      priority:String(fd.get("priority")||"normal"),
+      due_date:String(fd.get("due_date")||"").trim()||null,
+      weekdays:[...form.querySelectorAll('input[name="weekday"]:checked')].map(x=>Number(x.value)),
+      active:form.querySelector('input[name="active"]').checked
+    };
+    if(!payload.name){this._questEditorError="Bitte einen Namen eingeben.";this.render();return;}
+    if(!payload.category_id){this._questEditorError="Bitte eine Kategorie auswählen.";this.render();return;}
+
+    try{
+      if(this._questEditor?.id){
+        await this.managerCall(this._config.quest_update_script,{quest_id:Number(this._questEditor.id),...payload});
+      }else{
+        await this.managerCall(this._config.quest_create_script,payload);
+      }
+      this._questEditor=null;
+      this._questEditorError="";
+      this.render();
+    }catch(e){
+      this._questEditorError=e?.message||"Quest konnte nicht gespeichert werden.";
+      this.render();
+    }
+  }
+
 
   async toggleQuest(id){
     await this.managerCall(this._config.quest_toggle_script,{quest_id:Number(id)});
@@ -1693,6 +1714,19 @@ class LifeManagerDashboardCard extends HTMLElement{
         .manager-main small{display:block;font-size:11px;opacity:.6;margin-top:3px}
         .manager-actions{display:flex;gap:6px;flex-wrap:wrap}
         .manager-footer{display:flex;justify-content:flex-end;margin-top:12px}
+        .editor-panel{border:1px solid var(--divider-color)}
+        .editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+        .editor-grid .span2{grid-column:1/-1}
+        .field{display:flex;flex-direction:column;gap:6px;min-width:0}
+        .field>span,.weekday-field legend{font-size:12px;font-weight:700;opacity:.75}
+        .field input,.field select,.field textarea{box-sizing:border-box;width:100%;min-height:42px;padding:8px 10px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit}
+        .weekday-field{border:1px solid var(--divider-color);border-radius:10px;padding:10px}
+        .weekday-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:6px}
+        .weekday{display:flex;align-items:center;justify-content:center;gap:4px;padding:7px 3px;border:1px solid var(--divider-color);border-radius:8px}
+        .weekday input{width:auto;min-height:auto}
+        .switch-field{display:flex;align-items:center;gap:8px}
+        .editor-actions{display:flex;justify-content:flex-end;gap:8px}
+        .editor-error{margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--error-color);color:white;font-size:13px}
         button:disabled{opacity:.4;cursor:not-allowed}
         @media(max-width:700px){
           .tabs{grid-template-columns:repeat(2,1fr)}
@@ -1710,7 +1744,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.6.2</div>
+          <div class="version">Frontend v1.6.3</div>
         </div>
 
         <div class="tabs">
@@ -1736,6 +1770,9 @@ class LifeManagerDashboardCard extends HTMLElement{
     this.shadowRoot.querySelectorAll("[data-buy]").forEach(b=>b.onclick=()=>this.buyReward(b.dataset.buy));
     this.shadowRoot.querySelectorAll("[data-q-new]").forEach(b=>b.onclick=()=>this.newQuest());
     this.shadowRoot.querySelectorAll("[data-q-edit]").forEach(b=>b.onclick=()=>this.editQuest(b.dataset.qEdit));
+    this.shadowRoot.querySelectorAll("[data-q-cancel]").forEach(b=>b.onclick=()=>this.closeQuestEditor());
+    const questForm=this.shadowRoot.getElementById("lm-quest-editor");
+    if(questForm)questForm.onsubmit=(ev)=>{ev.preventDefault();this.saveQuest(questForm);};
     this.shadowRoot.querySelectorAll("[data-q-toggle]").forEach(b=>b.onclick=()=>this.toggleQuest(b.dataset.qToggle));
     this.shadowRoot.querySelectorAll("[data-r-new]").forEach(b=>b.onclick=()=>this.newReward());
     this.shadowRoot.querySelectorAll("[data-r-edit]").forEach(b=>b.onclick=()=>this.editReward(b.dataset.rEdit));
