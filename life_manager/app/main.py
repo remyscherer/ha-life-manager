@@ -10,8 +10,31 @@ from sqlalchemy import text
 API_KEY = os.environ["API_KEY"]
 
 from database import engine
-app = FastAPI(title="Life Manager", version="1.7.1")
+app = FastAPI(title="Life Manager", version="1.7.2")
 logger = logging.getLogger("life_manager")
+
+
+def as_iso(value):
+    """Return a JSON-safe ISO-ish representation for DB date/time values."""
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def as_date(value):
+    """Normalize MariaDB date objects and SQLite TEXT values to datetime.date."""
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    raw = str(value).strip()
+    if not raw:
+        return None
+    # Supports YYYY-MM-DD and timestamps beginning with YYYY-MM-DD.
+    return date.fromisoformat(raw[:10])
+
 
 
 class CompleteQuest(BaseModel):
@@ -208,7 +231,7 @@ def fetch_today(connection):
             "quest_type": quest["quest_type"],
             "xp": qxp,
             "completed": completed,
-            "completed_at": completion["completed_at"].isoformat() if completion and completion["completed_at"] else None,
+            "completed_at": as_iso(completion["completed_at"]) if completion and completion["completed_at"] else None,
             "willpower_xp": int(completion["willpower_xp"] or 0) if completion else 0,
         })
 
@@ -349,7 +372,7 @@ def fetch_week(connection):
 
 
 def calculate_daily_streak(completion_dates, today_date):
-    dates = sorted(set(completion_dates), reverse=True)
+    dates = sorted({as_date(x) for x in completion_dates if as_date(x)}, reverse=True)
     if not dates:
         return 0, 0
 
@@ -479,7 +502,7 @@ def fetch_rewards(connection):
             "name": x["name"],
             "quantity": x["quantity"],
             "total_cost": x["total_cost"],
-            "purchased_at": x["purchased_at"].isoformat(),
+            "purchased_at": as_iso(x["purchased_at"]),
         } for x in recent_purchases],
         "purchase_history": [{
             "id": x["id"],
@@ -487,11 +510,11 @@ def fetch_rewards(connection):
             "reward_name": x["name"],
             "quantity": x["quantity"],
             "total_cost": x["total_cost"],
-            "purchased_at": x["purchased_at"].isoformat(),
+            "purchased_at": as_iso(x["purchased_at"]),
         } for x in recent_purchases],
         "coin_history": [{
             "id": x["id"],
-            "created_at": x["created_at"].isoformat() if x["created_at"] else None,
+            "created_at": as_iso(x["created_at"]) if x["created_at"] else None,
             "amount": int(x["amount"]),
             "reason": x["reason"],
         } for x in coin_history],
@@ -542,14 +565,14 @@ def fetch_quest_manager(connection):
             "id": s["id"],
             "weekday": s["weekday"],
             "interval_days": s["interval_days"],
-            "next_due": s["next_due"].isoformat() if s["next_due"] else None,
+            "next_due": as_iso(s["next_due"]) if s["next_due"] else None,
         })
 
     return {
         "categories": [dict(x) for x in categories],
         "quests": [{
             **{k: q[k] for k in q.keys() if k != "created_at"},
-            "created_at": q["created_at"].isoformat() if q["created_at"] else None,
+            "created_at": as_iso(q["created_at"]) if q["created_at"] else None,
             "schedules": schedule_map.get(q["id"], []),
         } for q in quests],
     }
@@ -755,7 +778,7 @@ def evaluate_achievements(connection):
             "target": target,
             "progress_percent": min(100, round((current / target) * 100)) if target else 100,
             "unlocked": bool(existing),
-            "unlocked_at": existing["unlocked_at"].isoformat() if existing and existing["unlocked_at"] else None,
+            "unlocked_at": as_iso(existing["unlocked_at"]) if existing and existing["unlocked_at"] else None,
         })
 
     return {
@@ -777,7 +800,7 @@ def scheduled_dates_for_quest(connection, quest_id: int, start_date: date, end_d
     for schedule in schedules:
         weekday = schedule["weekday"]
         interval_days = schedule["interval_days"]
-        next_due = schedule["next_due"]
+        next_due = as_date(schedule["next_due"])
 
         if weekday:
             d = start_date
@@ -815,7 +838,7 @@ def calculate_planned_streak(connection, quest_id: int, today_date: date):
     if not planned:
         return 0, 0
 
-    completed_dates = set(connection.execute(text("""
+    completed_dates = {as_date(x) for x in connection.execute(text("""
         SELECT DISTINCT DATE(completed_at)
         FROM quest_completions
         WHERE quest_id=:qid
@@ -824,7 +847,7 @@ def calculate_planned_streak(connection, quest_id: int, today_date: date):
         "qid": quest_id,
         "start": lookback_start,
         "end": today_date,
-    }).scalars().all())
+    }).scalars().all() if as_date(x)}
 
     # Best streak = aufeinanderfolgende geplante Termine erledigt.
     best = 0
@@ -1169,7 +1192,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.7.1",
+            "version": "1.7.2",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1414,10 +1437,16 @@ def occurrence_map(connection, for_date):
 
     original = {}
     moved_in = []
-    for r in rows:
-        if r["occurrence_date"] == for_date:
+    for raw in rows:
+        r = dict(raw)
+        occurrence_date = as_date(r["occurrence_date"])
+        moved_to = as_date(r["moved_to"])
+        r["occurrence_date"] = occurrence_date
+        r["moved_to"] = moved_to
+
+        if occurrence_date == for_date:
             original[int(r["quest_id"])] = r
-        if r["moved_to"] == for_date and r["status"] == "moved":
+        if moved_to == for_date and r["status"] == "moved":
             moved_in.append(r)
     return original, moved_in
 
@@ -1472,10 +1501,10 @@ def apply_occurrences_to_today(connection, today_payload):
             "quest_type": row["quest_type"],
             "xp": calculate_quest_xp(row),
             "completed": bool(completed),
-            "completed_at": completed["completed_at"].isoformat() if completed else None,
+            "completed_at": as_iso(completed["completed_at"]) if completed else None,
             "willpower_xp": int(completed["willpower_xp"] or 0) if completed else 0,
             "occurrence_status": "moved",
-            "moved_from": occ["occurrence_date"].isoformat(),
+            "moved_from": as_iso(occ["occurrence_date"]),
         })
 
     today_payload = dict(today_payload)
@@ -1759,7 +1788,7 @@ def fetch_analytics(connection):
             "willpower_xp": int(r["willpower_xp"] or 0),
         } for r in kbr_rows],
         "daily": [{
-            "date": r["d"].isoformat(),
+            "date": as_iso(r["d"]),
             "xp": int(r["xp"] or 0),
             "willpower_xp": int(r["willpower_xp"] or 0),
         } for r in daily_rows],
@@ -1780,7 +1809,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.7.1",
+        "version": "1.7.2",
         "schema_version": schema_version,
     }
 

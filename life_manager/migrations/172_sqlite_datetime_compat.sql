@@ -1,0 +1,1 @@
+-- v1.7.2: API compatibility for SQLite TEXT date/time values.

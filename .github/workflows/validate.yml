@@ -18,5 +18,8 @@ jobs:
       - run: node --check life_manager/frontend/life-manager.js
       - run: |
           test -f life_manager/migrations/171_mariadb_decimal_import_fix.sql
-          grep -q 'version: "1.7.1"' life_manager/config.yaml
+          test -f life_manager/migrations/172_sqlite_datetime_compat.sql
+          grep -q 'def as_iso' life_manager/app/main.py
+          grep -q 'def as_date' life_manager/app/main.py
+          grep -q 'version: "1.7.2"' life_manager/config.yaml
           grep -q 'Decimal' life_manager/app/import_mariadb.py
