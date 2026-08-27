@@ -33,7 +33,62 @@ rest_command:
     headers:
       x-api-key: !secret life_manager_api_key
 
+  life_manager_category_create:
+    url: "__LIFE_MANAGER_BASE_URL__/categories"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >-
+      {{ {"name": name, "icon": icon | default("mdi:folder"), "sort_order": sort_order | default(0) | int, "active": active | default(true)} | to_json }}
+
+  life_manager_category_update:
+    url: "__LIFE_MANAGER_BASE_URL__/categories/{{ category_id }}"
+    method: PUT
+    headers:
+      x-api-key: !secret life_manager_api_key
+    content_type: "application/json"
+    payload: >-
+      {{ {"name": name, "icon": icon | default("mdi:folder"), "sort_order": sort_order | default(0) | int, "active": active | default(true)} | to_json }}
+
+  life_manager_category_toggle:
+    url: "__LIFE_MANAGER_BASE_URL__/categories/{{ category_id }}/toggle"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+
 script:
+  life_manager_category_create:
+    alias: Life Manager - Kategorie erstellen
+    mode: queued
+    sequence:
+      - action: rest_command.life_manager_category_create
+        data:
+          name: "{{ name }}"
+          icon: "{{ icon | default('mdi:folder') }}"
+          sort_order: "{{ sort_order | default(0) }}"
+          active: "{{ active | default(true) }}"
+
+  life_manager_category_update:
+    alias: Life Manager - Kategorie bearbeiten
+    mode: queued
+    sequence:
+      - action: rest_command.life_manager_category_update
+        data:
+          category_id: "{{ category_id | int }}"
+          name: "{{ name }}"
+          icon: "{{ icon | default('mdi:folder') }}"
+          sort_order: "{{ sort_order | default(0) }}"
+          active: "{{ active | default(true) }}"
+
+  life_manager_category_toggle:
+    alias: Life Manager - Kategorie aktivieren oder deaktivieren
+    mode: queued
+    sequence:
+      - action: rest_command.life_manager_category_toggle
+        data:
+          category_id: "{{ category_id | int }}"
+
   life_manager_bridge_test:
     alias: Life Manager - Bridge Test
     mode: single

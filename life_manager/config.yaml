@@ -1,6 +1,6 @@
 name: "Life Manager"
-description: "Life Manager API, automatischer Tagesabschluss und Quest Editor"
-version: "1.6.2"
+description: "Life Manager mit eingebetteter SQLite-Datenbank"
+version: "1.7.1"
 slug: "life_manager"
 init: false
 
@@ -19,6 +19,7 @@ map:
     read_only: false
 
 options:
+  migrate_from_mariadb: true
   mysql_host: "core-mariadb"
   mysql_port: 3306
   mysql_database: "life_manager"
@@ -29,6 +30,7 @@ options:
   ha_packages_dir: "auto"
 
 schema:
+  migrate_from_mariadb: bool
   mysql_host: str
   mysql_port: port
   mysql_database: str

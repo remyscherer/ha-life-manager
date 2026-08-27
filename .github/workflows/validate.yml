@@ -1,157 +1,22 @@
 name: Validate Life Manager
-
 on:
   push:
+    branches: [main]
   pull_request:
-
 jobs:
   validate:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Validate Python syntax
-        run: python -m py_compile life_manager/app/main.py
-
-      - name: Validate required files
-        run: |
-          test -f repository.yaml
-          test -f life_manager/config.yaml
-          test -f life_manager/Dockerfile
-          test -f life_manager/run.sh
-          test -f life_manager/frontend/life-manager.js
-
-      - name: Check add-on version
-        run: |
-          grep -q 'version: "1.6.2"' life_manager/config.yaml
-
-
-- name: Validate v1 planner migration
-  run: test -f life_manager/migrations/100_planner.sql
-
-
-- name: Validate v1.0.1 planner migration
-  run: test -f life_manager/migrations/101_planner_today_fix.sql
-
-
-- name: Validate v1.0.2 dashboard transport migration
-  run: test -f life_manager/migrations/102_dashboard_data_wrapper.sql
-
-- name: Validate future-proof HA sensor example
-  run: test -f life_manager/examples/life_manager_sensor_v1.0.2.yaml
-
-
-- name: Validate v1.1 planner migration
-  run: test -f life_manager/migrations/110_planner_priority_due.sql
-
-
-- name: Validate v1.1.1 frontend auto-update migration
-  run: test -f life_manager/migrations/111_frontend_autoreload.sql
-
-
-- name: Validate stable frontend loader
-  run: |
-    test -f life_manager/frontend/life-manager-loader.js
-    test -f life_manager/migrations/112_frontend_loader.sql
-
-
-- name: Validate v1.2 planning migration
-  run: test -f life_manager/migrations/120_weekly_goals.sql
-
-      - name: Validate v1.3 occurrence migration
-        run: test -f life_manager/migrations/130_quest_occurrences.sql
-
-      - name: Validate v1.4 analytics migration
-        run: test -f life_manager/migrations/140_analytics.sql
-
-
-- name: Validate generated Home Assistant bridge
-  run: |
-    test -f life_manager/ha_bridge/life_manager_generated.yaml
-    test -f life_manager/migrations/141_generated_ha_bridge.sql
-
-
-- name: Validate v1.4.2 package path detection
-  run: |
-    test -f life_manager/migrations/142_package_path_detection.sql
-    grep -q '/homeassistant/_packages' life_manager/run.sh
-
-
-- name: Validate v1.4.3 bridge fix
-  run: |
-    test -f life_manager/migrations/143_bridge_fix.sql
-    grep -q 'ha_bridge_base_url' life_manager/config.yaml
-    grep -q '__LIFE_MANAGER_BASE_URL__' life_manager/ha_bridge/life_manager_generated.yaml
-
-
-- name: Validate v1.5.3 restored HA bridge
-  run: |
-    test -f life_manager/migrations/153_bridge_restore.sql
-    grep -q 'life_manager_bridge_test' life_manager/ha_bridge/life_manager_generated.yaml
-    grep -q 'life_quest_occurrence' life_manager/ha_bridge/life_manager_generated.yaml
-    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
-
-- name: Validate v1.5.4 bridge fields
-  run: |
-    test -f life_manager/migrations/154_bridge_fields_fix.sql
-    grep -q 'life_manager_rest_test' life_manager/ha_bridge/life_manager_generated.yaml
-    grep -q 'life_quest_occurrence' life_manager/ha_bridge/life_manager_generated.yaml
-    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
-
-- name: Validate v1.5.5 occurrence diagnostic
-  run: |
-    test -f life_manager/migrations/155_occurrence_diagnostic.sql
-    grep -q 'life_quest_occurrence_exec' life_manager/ha_bridge/life_manager_generated.yaml
-    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
-
-- name: Validate v1.5.6 occurrence entity rename
-  run: |
-    test -f life_manager/migrations/156_occurrence_entity_rename.sql
-    grep -q 'life_manager_quest_occurrence' life_manager/ha_bridge/life_manager_generated.yaml
-    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
-
-- name: Validate v1.5.7 occurrence payload fix
-  run: |
-    test -f life_manager/migrations/157_occurrence_payload_fix.sql
-    grep -q 'target_date: null' life_manager/ha_bridge/life_manager_generated.yaml
-    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
-
-- name: Validate v1.5.8 complete dashboard
-  run: |
-    test -f life_manager/migrations/158_dashboard_card.sql
-    test -f life_manager/examples/dashboard_single_card.yaml
-    grep -q 'life-manager-dashboard-card' life_manager/frontend/life-manager.js
-    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
-      - name: Validate v1.6.0 Reward System 2.0
-        run: |
-          test -f life_manager/migrations/160_rewards_2.sql
-          grep -q 'reserved_coins' life_manager/app/main.py
-          python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
-
-- name: Validate v1.6.1 dashboard management
-  run: |
-    test -f life_manager/migrations/161_dashboard_management.sql
-    grep -q 'Verwaltung' life_manager/frontend/life-manager.js
-    grep -q 'data-q-new' life_manager/frontend/life-manager.js
-    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
-
-
-- name: Validate v1.6.2 dashboard management hotfix
-  run: |
-    test -f life_manager/migrations/162_dashboard_management_fix.sql
-    node --check life_manager/frontend/life-manager.js
-    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: python -m py_compile life_manager/app/main.py life_manager/app/database.py life_manager/app/migrate.py life_manager/app/import_mariadb.py
+      - run: node --check life_manager/frontend/life-manager.js
+      - run: |
+          test -f life_manager/migrations/171_mariadb_decimal_import_fix.sql
+          grep -q 'version: "1.7.1"' life_manager/config.yaml
+          grep -q 'Decimal' life_manager/app/import_mariadb.py
