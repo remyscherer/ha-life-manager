@@ -30,7 +30,7 @@ jobs:
 
       - name: Check add-on version
         run: |
-          grep -q 'version: "1.6.3"' life_manager/config.yaml
+          grep -q 'version: "1.6.4"' life_manager/config.yaml
 
 
 - name: Validate v1 planner migration
@@ -162,3 +162,12 @@ jobs:
           grep -q 'lm-quest-editor' life_manager/frontend/life-manager.js
           node --check life_manager/frontend/life-manager.js
           python -m py_compile life_manager/app/main.py life_manager/app/migrate.py
+
+
+- name: Validate v1.6.4 Quest Editor focus fix
+  run: |
+    test -f life_manager/migrations/164_quest_editor_focus_fix.sql
+    grep -q 'form.contains(active)' life_manager/frontend/life-manager.js
+    grep -q 'syncQuestEditorDraft' life_manager/frontend/life-manager.js
+    node --check life_manager/frontend/life-manager.js
+    python -m py_compile life_manager/app/main.py life_manager/app/migrate.py

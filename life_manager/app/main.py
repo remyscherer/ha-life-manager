@@ -20,7 +20,7 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-app = FastAPI(title="Life Manager", version="1.6.3")
+app = FastAPI(title="Life Manager", version="1.6.4")
 logger = logging.getLogger("life_manager")
 
 
@@ -1172,7 +1172,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.6.3",
+            "version": "1.6.4",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1782,7 +1782,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.6.3",
+        "version": "1.6.4",
         "schema_version": schema_version,
     }
 

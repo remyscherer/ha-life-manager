@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.6.3";
-console.info("Life Manager Frontend v1.6.3 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.6.4";
+console.info("Life Manager Frontend v1.6.4 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -1158,6 +1158,16 @@ class LifeManagerDashboardCard extends HTMLElement{
 
   set hass(h){
     this._hass=h;
+
+    const form=this.shadowRoot?.getElementById("lm-quest-editor");
+    const active=this.shadowRoot?.activeElement;
+
+    // Home Assistant refreshes `hass` frequently. Do not rebuild the editor
+    // while the user is actively typing, otherwise the input loses focus.
+    if(this._questEditor && form && active && form.contains(active)){
+      return;
+    }
+
     this.render();
   }
 
@@ -1557,6 +1567,27 @@ class LifeManagerDashboardCard extends HTMLElement{
     this.render();
   }
 
+  syncQuestEditorDraft(form){
+    if(!this._questEditor || !form)return;
+
+    const fd=new FormData(form);
+    this._questEditor={
+      ...this._questEditor,
+      name:String(fd.get("name")||""),
+      category_id:Number(fd.get("category_id")||0),
+      quest_type:String(fd.get("quest_type")||"routine"),
+      description:String(fd.get("description")||""),
+      estimated_minutes:Number(fd.get("estimated_minutes")||0),
+      kbr:Number(fd.get("kbr")||1),
+      xp_mode:String(fd.get("xp_mode")||"fixed"),
+      fixed_xp:Number(fd.get("fixed_xp")||0),
+      priority:String(fd.get("priority")||"normal"),
+      due_date:String(fd.get("due_date")||""),
+      weekdays:[...form.querySelectorAll('input[name="weekday"]:checked')].map(x=>Number(x.value)),
+      active:form.querySelector('input[name="active"]')?.checked!==false
+    };
+  }
+
   async saveQuest(form){
     const fd=new FormData(form);
     const payload={
@@ -1744,7 +1775,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.6.3</div>
+          <div class="version">Frontend v1.6.4</div>
         </div>
 
         <div class="tabs">
@@ -1772,7 +1803,11 @@ class LifeManagerDashboardCard extends HTMLElement{
     this.shadowRoot.querySelectorAll("[data-q-edit]").forEach(b=>b.onclick=()=>this.editQuest(b.dataset.qEdit));
     this.shadowRoot.querySelectorAll("[data-q-cancel]").forEach(b=>b.onclick=()=>this.closeQuestEditor());
     const questForm=this.shadowRoot.getElementById("lm-quest-editor");
-    if(questForm)questForm.onsubmit=(ev)=>{ev.preventDefault();this.saveQuest(questForm);};
+    if(questForm){
+      questForm.onsubmit=(ev)=>{ev.preventDefault();this.saveQuest(questForm);};
+      questForm.oninput=()=>this.syncQuestEditorDraft(questForm);
+      questForm.onchange=()=>this.syncQuestEditorDraft(questForm);
+    }
     this.shadowRoot.querySelectorAll("[data-q-toggle]").forEach(b=>b.onclick=()=>this.toggleQuest(b.dataset.qToggle));
     this.shadowRoot.querySelectorAll("[data-r-new]").forEach(b=>b.onclick=()=>this.newReward());
     this.shadowRoot.querySelectorAll("[data-r-edit]").forEach(b=>b.onclick=()=>this.editReward(b.dataset.rEdit));
