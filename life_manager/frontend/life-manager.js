@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.7.4";
-console.info("Life Manager Frontend v1.7.4 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.8.0";
+console.info("Life Manager Frontend v1.8.0 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -1156,7 +1156,10 @@ class LifeManagerDashboardCard extends HTMLElement{
       reward_toggle_script:c.reward_toggle_script||"script.life_reward_toggle",
       category_create_script:c.category_create_script||"script.life_manager_category_create",
       category_update_script:c.category_update_script||"script.life_manager_category_update",
-      category_toggle_script:c.category_toggle_script||"script.life_manager_category_toggle"
+      category_toggle_script:c.category_toggle_script||"script.life_manager_category_toggle",
+      backup_create_script:c.backup_create_script||"script.life_manager_backup_create",
+      backup_restore_script:c.backup_restore_script||"script.life_manager_backup_restore",
+      backup_delete_script:c.backup_delete_script||"script.life_manager_backup_delete"
     };
     this.render();
   }
@@ -1453,6 +1456,8 @@ class LifeManagerDashboardCard extends HTMLElement{
     const quests=Array.isArray(qm.quests)?qm.quests:[];
     const categories=Array.isArray(qm.categories)?qm.categories:[];
     const rewards=(d.rewards||{}).rewards||[];
+    const backups=d.backups||{};
+    const backupItems=Array.isArray(backups.backups)?backups.backups:[];
     const editor=this._questEditor;
     const categoryEditor=this._categoryEditor;
     const weekdays=[[1,"Mo"],[2,"Di"],[3,"Mi"],[4,"Do"],[5,"Fr"],[6,"Sa"],[7,"So"]];
@@ -1568,6 +1573,41 @@ class LifeManagerDashboardCard extends HTMLElement{
               </div>`).join("")||'<div class="empty">Keine Rewards vorhanden.</div>'}
           </div>
           <div class="manager-footer"><button type="button" data-r-new>+ Neuer Reward</button></div>
+        </section>
+
+        <section class="panel span2">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">💾 BACKUP & RESTORE</div>
+              <h3>SQLite-Sicherungen</h3>
+            </div>
+            <button type="button" data-backup-create>+ Backup erstellen</button>
+          </div>
+
+          <div class="backup-summary">
+            <span>Datenbank <b>${LM.esc(backups.database_path||"/data/life_manager.db")}</b></span>
+            <span>Backups <b>${Number(backups.count||0)}</b></span>
+            <span>Aufbewahrung <b>${Number(backups.retention||20)}</b></span>
+          </div>
+
+          <div class="manager-list">
+            ${backupItems.map(b=>`
+              <div class="manager-row">
+                <div class="manager-main">
+                  <b>${b.kind==="pre_restore"?"🛡️":"💾"} ${LM.esc(b.name)}</b>
+                  <small>${LM.esc(b.created_at||"")} · ${Number(b.size_mb||0).toFixed(2)} MB · ${b.kind==="pre_restore"?"Sicherheitsbackup":"Manuell"}</small>
+                </div>
+                <div class="manager-actions">
+                  <button type="button" class="secondary" data-backup-restore="${LM.esc(b.name)}">Wiederherstellen</button>
+                  <button type="button" class="secondary danger" data-backup-delete="${LM.esc(b.name)}">Löschen</button>
+                </div>
+              </div>
+            `).join("")||'<div class="empty">Noch keine Backups vorhanden.</div>'}
+          </div>
+
+          <div class="muted info-note">
+            Vor jeder Wiederherstellung erstellt Life Manager automatisch ein Sicherheitsbackup des aktuellen Stands.
+          </div>
         </section>
       </div>`;
   }
@@ -1751,6 +1791,40 @@ class LifeManagerDashboardCard extends HTMLElement{
     await this.managerCall(this._config.reward_toggle_script,{reward_id:Number(id)});
   }
 
+  async createBackup(){
+    try{
+      await this.managerCall(this._config.backup_create_script,{});
+    }catch(e){
+      alert(e?.message||"Backup konnte nicht erstellt werden.");
+    }
+  }
+
+  async restoreBackup(name){
+    const ok=confirm(
+      `Backup "${name}" wirklich wiederherstellen?\n\n`+
+      `Der aktuelle Stand wird vorher automatisch als Sicherheitsbackup gespeichert.`
+    );
+    if(!ok)return;
+
+    try{
+      await this.managerCall(this._config.backup_restore_script,{backup_name:name});
+      alert("Backup wurde wiederhergestellt.");
+    }catch(e){
+      alert(e?.message||"Backup konnte nicht wiederhergestellt werden.");
+    }
+  }
+
+  async deleteBackup(name){
+    const ok=confirm(`Backup "${name}" wirklich löschen?`);
+    if(!ok)return;
+
+    try{
+      await this.managerCall(this._config.backup_delete_script,{backup_name:name});
+    }catch(e){
+      alert(e?.message||"Backup konnte nicht gelöscht werden.");
+    }
+  }
+
   render(){
     if(!this._config)return;
     const entity=this._hass?.states?.[this._config.entity];
@@ -1826,6 +1900,9 @@ class LifeManagerDashboardCard extends HTMLElement{
         .manager-main small{display:block;font-size:11px;opacity:.6;margin-top:3px}
         .manager-actions{display:flex;gap:6px;flex-wrap:wrap}
         .manager-footer{display:flex;justify-content:flex-end;margin-top:12px}
+        .backup-summary{display:flex;gap:18px;flex-wrap:wrap;margin:12px 0;font-size:12px;opacity:.75}
+        .backup-summary b{margin-left:4px}
+        button.danger{color:var(--error-color,#f44336)}
         .editor-panel{border:1px solid var(--divider-color)}
         .editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
         .editor-grid .span2{grid-column:1/-1}
@@ -1856,7 +1933,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.7.4</div>
+          <div class="version">Frontend v1.8.0</div>
         </div>
 
         <div class="tabs">
@@ -1903,6 +1980,9 @@ class LifeManagerDashboardCard extends HTMLElement{
     this.shadowRoot.querySelectorAll("[data-r-new]").forEach(b=>b.onclick=()=>this.newReward());
     this.shadowRoot.querySelectorAll("[data-r-edit]").forEach(b=>b.onclick=()=>this.editReward(b.dataset.rEdit));
     this.shadowRoot.querySelectorAll("[data-r-toggle]").forEach(b=>b.onclick=()=>this.toggleReward(b.dataset.rToggle));
+    this.shadowRoot.querySelectorAll("[data-backup-create]").forEach(b=>b.onclick=()=>this.createBackup());
+    this.shadowRoot.querySelectorAll("[data-backup-restore]").forEach(b=>b.onclick=()=>this.restoreBackup(b.dataset.backupRestore));
+    this.shadowRoot.querySelectorAll("[data-backup-delete]").forEach(b=>b.onclick=()=>this.deleteBackup(b.dataset.backupDelete));
   }
 }
 

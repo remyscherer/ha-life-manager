@@ -10,7 +10,8 @@ from sqlalchemy import text
 API_KEY = os.environ["API_KEY"]
 
 from database import engine
-app = FastAPI(title="Life Manager", version="1.7.4")
+from backup import create_backup, delete_backup, list_backups, restore_backup
+app = FastAPI(title="Life Manager", version="1.8.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -1292,7 +1293,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.7.4",
+            "version": "1.8.0",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1900,6 +1901,61 @@ def fetch_analytics(connection):
     }
 
 
+
+@app.get("/backups")
+def get_backups():
+    return list_backups()
+
+
+@app.post("/backups")
+def create_manual_backup(x_api_key: str | None = Header(default=None)):
+    check_api_key(x_api_key)
+    try:
+        backup = create_backup("manual")
+    except Exception as exc:
+        logger.exception("Backup creation failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Backup creation failed: {type(exc).__name__}"
+        )
+    return {"success": True, "backup": backup}
+
+
+@app.post("/backups/{backup_name}/restore")
+def restore_database_backup(
+    backup_name: str,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+    try:
+        result = restore_backup(backup_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid backup name")
+    except Exception as exc:
+        logger.exception("Backup restore failed: %s", backup_name)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Backup restore failed: {type(exc).__name__}"
+        )
+    return result
+
+
+@app.delete("/backups/{backup_name}")
+def remove_database_backup(
+    backup_name: str,
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+    try:
+        return delete_backup(backup_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid backup name")
+
+
 @app.get("/health")
 def health():
     with engine.connect() as c:
@@ -1913,7 +1969,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.7.4",
+        "version": "1.8.0",
         "schema_version": schema_version,
     }
 
@@ -1936,6 +1992,7 @@ def dashboard():
             "weekly_goals": fetch_weekly_goals(c),
             "day_plan": fetch_day_plan(c),
             "analytics": fetch_analytics(c),
+            "backups": list_backups(),
         }
 
         # Stable Home Assistant transport wrapper.

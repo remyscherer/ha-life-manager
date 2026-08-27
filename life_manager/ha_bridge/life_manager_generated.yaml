@@ -120,7 +120,49 @@ rest_command:
     headers:
       x-api-key: !secret life_manager_api_key
 
+
+  life_manager_backup_create:
+    url: "__LIFE_MANAGER_BASE_URL__/backups"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+
+  life_manager_backup_restore:
+    url: "__LIFE_MANAGER_BASE_URL__/backups/{{ backup_name }}/restore"
+    method: POST
+    headers:
+      x-api-key: !secret life_manager_api_key
+
+  life_manager_backup_delete:
+    url: "__LIFE_MANAGER_BASE_URL__/backups/{{ backup_name }}"
+    method: DELETE
+    headers:
+      x-api-key: !secret life_manager_api_key
+
 script:
+
+  life_manager_backup_create:
+    alias: Life Manager - Backup erstellen
+    mode: single
+    sequence:
+      - action: rest_command.life_manager_backup_create
+
+  life_manager_backup_restore:
+    alias: Life Manager - Backup wiederherstellen
+    mode: single
+    sequence:
+      - action: rest_command.life_manager_backup_restore
+        data:
+          backup_name: "{{ backup_name }}"
+
+  life_manager_backup_delete:
+    alias: Life Manager - Backup löschen
+    mode: single
+    sequence:
+      - action: rest_command.life_manager_backup_delete
+        data:
+          backup_name: "{{ backup_name }}"
+
 
   life_manager_quest_create:
     alias: Life Manager - Quest erstellen

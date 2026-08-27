@@ -1,0 +1,1 @@
+-- v1.8.0 adds filesystem-level SQLite Backup & Restore support.

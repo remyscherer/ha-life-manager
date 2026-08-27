@@ -1,6 +1,6 @@
 name: "Life Manager"
 description: "Life Manager mit eingebetteter SQLite-Datenbank"
-version: "1.7.4"
+version: "1.8.0"
 slug: "life_manager"
 init: false
 
@@ -19,6 +19,7 @@ map:
     read_only: false
 
 options:
+  backup_retention: 20
   migrate_from_mariadb: true
   mysql_host: "core-mariadb"
   mysql_port: 3306
@@ -30,6 +31,7 @@ options:
   ha_packages_dir: "auto"
 
 schema:
+  backup_retention: int(1,100)
   migrate_from_mariadb: bool
   mysql_host: str
   mysql_port: port
