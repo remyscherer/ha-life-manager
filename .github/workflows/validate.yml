@@ -18,10 +18,10 @@ jobs:
         run: python -m py_compile life_manager/app/main.py life_manager/app/database.py life_manager/app/migrate.py life_manager/app/import_mariadb.py life_manager/app/backup.py
       - name: Validate frontend
         run: node --check life_manager/frontend/life-manager.js
-      - name: Validate v1.9.0 Achievements 2.0
+      - name: Validate v1.9.1 Achievements 2.0
         run: |
           test -f life_manager/migrations/190_achievements_2.sql
-          grep -q 'version: "1.9.0"' life_manager/config.yaml
+          grep -q 'version: "1.9.1"' life_manager/config.yaml
           grep -q 'reward_granted' life_manager/app/main.py
           grep -q 'diamond' life_manager/app/main.py
           grep -q 'ACHIEVEMENTS 2.0' life_manager/frontend/life-manager.js

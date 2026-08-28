@@ -1,6 +1,6 @@
 name: "Life Manager"
 description: "Life Manager mit eingebetteter SQLite-Datenbank"
-version: "1.9.0"
+version: "1.9.1"
 slug: "life_manager"
 init: false
 

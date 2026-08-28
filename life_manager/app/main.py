@@ -2,8 +2,10 @@ import os
 import logging
 from datetime import date, timedelta
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request
 from pydantic import BaseModel, Field, field_validator
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 
@@ -11,7 +13,28 @@ API_KEY = os.environ["API_KEY"]
 
 from database import engine
 from backup import create_backup, delete_backup, list_backups, restore_backup
-app = FastAPI(title="Life Manager", version="1.9.0")
+app = FastAPI(title="Life Manager", version="1.9.1")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    try:
+        body = await request.body()
+        body_text = body.decode("utf-8", errors="replace")
+    except Exception:
+        body_text = "<unavailable>"
+
+    logging.getLogger("life_manager").error(
+        "Request validation failed: %s %s | body=%s | errors=%s",
+        request.method,
+        request.url.path,
+        body_text[:2000],
+        exc.errors(),
+    )
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "path": request.url.path},
+    )
 logger = logging.getLogger("life_manager")
 
 
@@ -145,6 +168,14 @@ class QuestOccurrencePayload(BaseModel):
     action: str
     target_date: date | None = None
     note: str | None = None
+
+    @field_validator("action", mode="before")
+    @classmethod
+    def _normalize_action(cls, value):
+        value = normalize_optional(value)
+        if value is None:
+            return ""
+        return str(value).strip().lower()
 
     @field_validator("target_date", mode="before")
     @classmethod
@@ -1448,7 +1479,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.9.0",
+            "version": "1.9.1",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1558,7 +1589,11 @@ def change_quest_occurrence(
 
     action = payload.action
     if action not in ("skip", "tomorrow", "move", "restore"):
-        raise HTTPException(status_code=400, detail="Invalid occurrence action")
+        logger.warning("Invalid occurrence action for quest %s: %r", quest_id, action)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid occurrence action: {action!r}"
+        )
 
     target_date = payload.target_date
     source_date = date.today()
