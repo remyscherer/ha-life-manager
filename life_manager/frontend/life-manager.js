@@ -1,5 +1,5 @@
-window.LIFE_MANAGER_FRONTEND_VERSION="1.8.0";
-console.info("Life Manager Frontend v1.8.0 loaded");
+window.LIFE_MANAGER_FRONTEND_VERSION="1.9.0";
+console.info("Life Manager Frontend v1.9.0 loaded");
 const LM={
   dataRoot:e=>{
     const attrs=e?.attributes||{};
@@ -1333,14 +1333,56 @@ class LifeManagerDashboardCard extends HTMLElement{
       </div>
 
       <div class="content-grid">
-        <section class="panel">
-          <div class="eyebrow">🏆 ACHIEVEMENTS</div>
-          <div class="big small-big">${Number(achievements.unlocked_count||0)}/${Number(achievements.total_count||0)}</div>
-          ${(achievements.achievements||[]).slice(0,6).map(x=>`
-            <div class="mini-row ${x.unlocked?"":"dim"}">
-              <span>${x.unlocked?"✅":"🔒"} ${LM.esc(x.name)}</span><b>${Number(x.current||0)}/${Number(x.target||0)}</b>
+        <section class="panel span2 achievement-panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">🏆 ACHIEVEMENTS 2.0</div>
+              <h3>${LM.esc(achievements.current_title||"Rookie")}</h3>
             </div>
-          `).join("")}
+            <div class="achievement-total">
+              <b>${Number(achievements.unlocked_count||0)}/${Number(achievements.total_count||0)}</b>
+              <small>${Number(achievements.completion_percent||0)}%</small>
+            </div>
+          </div>
+
+          <div class="bar">
+            <div class="fill" style="width:${Math.min(100,Number(achievements.completion_percent||0))}%"></div>
+          </div>
+
+          <div class="tier-strip">
+            ${["bronze","silver","gold","platinum","diamond"].map(t=>{
+              const x=(achievements.tier_counts||{})[t]||{};
+              return `<span class="tier-badge tier-${t}">${t} ${Number(x.unlocked||0)}/${Number(x.total||0)}</span>`;
+            }).join("")}
+          </div>
+
+          ${(achievements.newly_unlocked||[]).length?`
+            <div class="unlock-banner">
+              🎉 Neu: ${(achievements.newly_unlocked||[]).map(x=>`${LM.esc(x.name)} (+${Number(x.reward_coins||0)} 🪙)`).join(" · ")}
+            </div>
+          `:""}
+
+          <div class="achievement-grid">
+            ${(achievements.achievements||[]).map(x=>`
+              <div class="achievement ${x.unlocked?"unlocked":"locked"}">
+                <div class="achievement-icon tier-${LM.esc(x.tier||"bronze")}">
+                  <ha-icon icon="${LM.esc(x.icon||"mdi:trophy")}"></ha-icon>
+                </div>
+                <div class="achievement-body">
+                  <div class="achievement-head">
+                    <b>${LM.esc(x.name)}</b>
+                    <span class="tier-badge tier-${LM.esc(x.tier||"bronze")}">${LM.esc(x.tier||"bronze")}</span>
+                  </div>
+                  <small>${LM.esc(x.description||"")}</small>
+                  <div class="bar mini-bar"><div class="fill" style="width:${Math.min(100,Number(x.progress_percent||0))}%"></div></div>
+                  <div class="achievement-foot">
+                    <span>${Number(x.current||0)}/${Number(x.target||0)}</span>
+                    <span>${x.unlocked?"✅":`+${Number(x.reward_coins||0)} 🪙`}</span>
+                  </div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
         </section>
 
         <section class="panel">
@@ -1424,7 +1466,7 @@ class LifeManagerDashboardCard extends HTMLElement{
 
     return `
       <div class="metrics top-metrics">
-        <div class="panel metric"><b>Lv. ${Number(player.level||0)}</b><small>Level</small></div>
+        <div class="panel metric"><b>Lv. ${Number(player.level||0)}</b><small>${LM.esc((d.achievements||{}).current_title||"Rookie")}</small></div>
         <div class="panel metric"><b>${Number(player.total_xp||0)}</b><small>Gesamt-XP</small></div>
         <div class="panel metric"><b>${Number(player.willpower_xp||0)}</b><small>Willpower XP</small></div>
         <div class="panel metric"><b>${Number(player.total_completions||0)}</b><small>Abschlüsse</small></div>
@@ -1886,6 +1928,18 @@ class LifeManagerDashboardCard extends HTMLElement{
         .rank{font-weight:800;opacity:.6}
         .dim{opacity:.45}
         .insight{padding:7px 0;border-top:1px solid var(--divider-color);font-size:13px}
+        .achievement-total{text-align:right}.achievement-total b{display:block;font-size:22px}.achievement-total small{opacity:.6}
+        .tier-strip{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+        .tier-badge{font-size:10px;font-weight:800;text-transform:uppercase;padding:3px 7px;border-radius:999px;border:1px solid var(--divider-color)}
+        .tier-bronze{opacity:.75}.tier-silver{opacity:.85}.tier-gold{font-weight:900}.tier-platinum{font-weight:900}.tier-diamond{font-weight:950}
+        .unlock-banner{margin:10px 0;padding:10px;border-radius:10px;background:var(--primary-color);color:white;font-weight:700}
+        .achievement-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+        .achievement{display:flex;gap:10px;padding:10px;border:1px solid var(--divider-color);border-radius:12px;min-width:0}
+        .achievement.locked{opacity:.55}.achievement.unlocked{background:var(--card-background-color)}
+        .achievement-icon{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:50%;border:2px solid var(--divider-color);flex:0 0 auto}
+        .achievement-body{min-width:0;flex:1}.achievement-head,.achievement-foot{display:flex;justify-content:space-between;align-items:center;gap:8px}
+        .achievement-body small{display:block;font-size:11px;opacity:.65;margin-top:2px}
+        .achievement-foot{font-size:10px;opacity:.7;margin-top:4px}.mini-bar{height:5px;margin-top:7px}
         .goal{margin-top:10px}
         .reward-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
         .reward{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px;border:1px solid var(--divider-color);border-radius:10px}
@@ -1924,6 +1978,7 @@ class LifeManagerDashboardCard extends HTMLElement{
           .metrics{grid-template-columns:repeat(2,1fr)}
           .top-metrics{grid-template-columns:repeat(2,1fr)}
           .reward-grid{grid-template-columns:1fr}
+          .achievement-grid{grid-template-columns:1fr}
           .quest{align-items:flex-start;flex-direction:column}
           .quest-actions{width:100%;justify-content:flex-start}
           .quest-actions button{min-width:44px;min-height:40px}
@@ -1933,7 +1988,7 @@ class LifeManagerDashboardCard extends HTMLElement{
       <ha-card>
         <div class="dashboard-head">
           <div><div class="eyebrow">🎮 LIFE GAME</div><h2>${LM.esc(this._config.title)}</h2></div>
-          <div class="version">Frontend v1.8.0</div>
+          <div class="version">Frontend v1.9.0</div>
         </div>
 
         <div class="tabs">

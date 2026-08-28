@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS achievements (
   icon TEXT,
   metric TEXT NOT NULL,
   target_value INTEGER NOT NULL,
+  tier TEXT NOT NULL DEFAULT 'bronze',
+  reward_coins INTEGER NOT NULL DEFAULT 0,
+  title TEXT,
+  category TEXT NOT NULL DEFAULT 'general',
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -129,6 +133,7 @@ CREATE TABLE IF NOT EXISTS achievement_unlocks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   achievement_id INTEGER NOT NULL UNIQUE,
   unlocked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reward_granted INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY(achievement_id) REFERENCES achievements(id)
 );
 
@@ -180,12 +185,27 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 """
 
+def _ensure_column(raw, table, column, definition):
+    columns = {
+        row[1] for row in raw.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    if column not in columns:
+        raw.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def main():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     raw = engine.raw_connection()
     try:
         raw.executescript(SCHEMA)
+
+        _ensure_column(raw, "achievements", "tier", "TEXT NOT NULL DEFAULT 'bronze'")
+        _ensure_column(raw, "achievements", "reward_coins", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(raw, "achievements", "title", "TEXT")
+        _ensure_column(raw, "achievements", "category", "TEXT NOT NULL DEFAULT 'general'")
+        _ensure_column(raw, "achievement_unlocks", "reward_granted", "INTEGER NOT NULL DEFAULT 0")
+
         raw.commit()
     finally:
         raw.close()

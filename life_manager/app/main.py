@@ -11,7 +11,7 @@ API_KEY = os.environ["API_KEY"]
 
 from database import engine
 from backup import create_backup, delete_backup, list_backups, restore_backup
-app = FastAPI(title="Life Manager", version="1.8.0")
+app = FastAPI(title="Life Manager", version="1.9.0")
 logger = logging.getLogger("life_manager")
 
 
@@ -705,87 +705,120 @@ def replace_schedules(connection, quest_id: int, payload: QuestPayload):
 
 
 
+
+def _achievement(code, name, description, icon, metric, target, tier, reward, category, title=None):
+    return {
+        "code": code,
+        "name": name,
+        "description": description,
+        "icon": icon,
+        "metric": metric,
+        "target": target,
+        "tier": tier,
+        "reward": reward,
+        "category": category,
+        "title": title,
+    }
+
+
 ACHIEVEMENT_DEFINITIONS = [
-    {
-        "code": "first_quest",
-        "name": "First Step",
-        "description": "Erste Quest abgeschlossen",
-        "icon": "mdi:flag-checkered",
-        "metric": "total_completions",
-        "target": 1,
-    },
-    {
-        "code": "ten_quests",
-        "name": "Getting Things Done",
-        "description": "10 Quests abgeschlossen",
-        "icon": "mdi:check-all",
-        "metric": "total_completions",
-        "target": 10,
-    },
-    {
-        "code": "hundred_quests",
-        "name": "Quest Machine",
-        "description": "100 Quests abgeschlossen",
-        "icon": "mdi:trophy",
-        "metric": "total_completions",
-        "target": 100,
-    },
-    {
-        "code": "ten_trainings",
-        "name": "Training Arc",
-        "description": "10 Trainings abgeschlossen",
-        "icon": "mdi:dumbbell",
-        "metric": "training_completions",
-        "target": 10,
-    },
-    {
-        "code": "fifty_trainings",
-        "name": "Iron Habit",
-        "description": "50 Trainings abgeschlossen",
-        "icon": "mdi:weight-lifter",
-        "metric": "training_completions",
-        "target": 50,
-    },
-    {
-        "code": "first_boss",
-        "name": "Boss Fight",
-        "description": "Erste KBR-5-Quest besiegt",
-        "icon": "mdi:sword-cross",
-        "metric": "boss_completions",
-        "target": 1,
-    },
-    {
-        "code": "ten_bosses",
-        "name": "Boss Hunter",
-        "description": "10 Boss Fights besiegt",
-        "icon": "mdi:shield-sword",
-        "metric": "boss_completions",
-        "target": 10,
-    },
-    {
-        "code": "willpower_100",
-        "name": "Discipline",
-        "description": "100 Willpower XP gesammelt",
-        "icon": "mdi:fire",
-        "metric": "willpower_xp",
-        "target": 100,
-    },
+    # Quest completions
+    _achievement("quest_1", "First Step", "Erste Quest abgeschlossen", "mdi:flag-checkered", "total_completions", 1, "bronze", 2, "quests"),
+    _achievement("quest_10", "Getting Things Done", "10 Quests abgeschlossen", "mdi:check-all", "total_completions", 10, "bronze", 5, "quests"),
+    _achievement("quest_25", "Momentum", "25 Quests abgeschlossen", "mdi:run-fast", "total_completions", 25, "silver", 10, "quests"),
+    _achievement("quest_50", "Quest Grinder", "50 Quests abgeschlossen", "mdi:progress-check", "total_completions", 50, "silver", 15, "quests"),
+    _achievement("quest_100", "Quest Machine", "100 Quests abgeschlossen", "mdi:trophy", "total_completions", 100, "gold", 30, "quests", "Quest Machine"),
+    _achievement("quest_250", "Legendary Finisher", "250 Quests abgeschlossen", "mdi:crown", "total_completions", 250, "platinum", 75, "quests", "Legendary Finisher"),
+
+    # Training
+    _achievement("training_1", "Training Arc", "Erstes Training abgeschlossen", "mdi:dumbbell", "training_completions", 1, "bronze", 2, "training"),
+    _achievement("training_10", "Consistency", "10 Trainings abgeschlossen", "mdi:arm-flex", "training_completions", 10, "bronze", 5, "training"),
+    _achievement("training_25", "Gym Regular", "25 Trainings abgeschlossen", "mdi:weight-lifter", "training_completions", 25, "silver", 10, "training"),
+    _achievement("training_50", "Iron Habit", "50 Trainings abgeschlossen", "mdi:weight-lifter", "training_completions", 50, "gold", 25, "training", "Iron Habit"),
+    _achievement("training_100", "Centurion", "100 Trainings abgeschlossen", "mdi:shield-star", "training_completions", 100, "platinum", 60, "training", "Centurion"),
+
+    # Habits
+    _achievement("habit_10", "Habit Starter", "10 Gewohnheiten abgeschlossen", "mdi:repeat", "habit_completions", 10, "bronze", 5, "habits"),
+    _achievement("habit_30", "Habit Builder", "30 Gewohnheiten abgeschlossen", "mdi:repeat-variant", "habit_completions", 30, "silver", 10, "habits"),
+    _achievement("habit_100", "Automatic", "100 Gewohnheiten abgeschlossen", "mdi:autorenew", "habit_completions", 100, "gold", 30, "habits", "Habit Builder"),
+    _achievement("habit_250", "Unshakeable", "250 Gewohnheiten abgeschlossen", "mdi:infinity", "habit_completions", 250, "platinum", 75, "habits", "Unshakeable"),
+
+    # Routines
+    _achievement("routine_10", "Routine Rookie", "10 Routinen abgeschlossen", "mdi:calendar-check", "routine_completions", 10, "bronze", 5, "routines"),
+    _achievement("routine_30", "Structured", "30 Routinen abgeschlossen", "mdi:calendar-sync", "routine_completions", 30, "silver", 10, "routines"),
+    _achievement("routine_100", "Clockwork", "100 Routinen abgeschlossen", "mdi:clock-check", "routine_completions", 100, "gold", 30, "routines", "Clockwork"),
+    _achievement("routine_250", "Systematic", "250 Routinen abgeschlossen", "mdi:cog-sync", "routine_completions", 250, "platinum", 75, "routines", "Systematic"),
+
+    # Boss fights
+    _achievement("boss_1", "Boss Fight", "Erste KBR-5-Quest besiegt", "mdi:sword-cross", "boss_completions", 1, "bronze", 5, "boss"),
+    _achievement("boss_5", "Boss Slayer", "5 Boss Fights besiegt", "mdi:sword", "boss_completions", 5, "silver", 15, "boss"),
+    _achievement("boss_10", "Boss Hunter", "10 Boss Fights besiegt", "mdi:shield-sword", "boss_completions", 10, "gold", 30, "boss", "Boss Hunter"),
+    _achievement("boss_25", "Raid Leader", "25 Boss Fights besiegt", "mdi:shield-crown", "boss_completions", 25, "platinum", 75, "boss", "Raid Leader"),
+    _achievement("boss_50", "Final Boss", "50 Boss Fights besiegt", "mdi:skull-crossbones", "boss_completions", 50, "diamond", 150, "boss", "Final Boss"),
+
+    # XP
+    _achievement("xp_100", "Leveling Up", "100 normale XP gesammelt", "mdi:star", "total_xp", 100, "bronze", 5, "xp"),
+    _achievement("xp_500", "XP Collector", "500 normale XP gesammelt", "mdi:star-circle", "total_xp", 500, "silver", 15, "xp"),
+    _achievement("xp_1000", "Four Digits", "1.000 normale XP gesammelt", "mdi:star-shooting", "total_xp", 1000, "gold", 30, "xp", "XP Collector"),
+    _achievement("xp_2500", "Power Level", "2.500 normale XP gesammelt", "mdi:lightning-bolt-circle", "total_xp", 2500, "platinum", 75, "xp", "Power Level"),
+    _achievement("xp_5000", "Over 5000", "5.000 normale XP gesammelt", "mdi:creation", "total_xp", 5000, "diamond", 150, "xp", "Ascended"),
+
+    # Willpower
+    _achievement("willpower_50", "Resistance", "50 Willpower XP gesammelt", "mdi:fire", "willpower_xp", 50, "bronze", 5, "willpower"),
+    _achievement("willpower_100", "Discipline", "100 Willpower XP gesammelt", "mdi:fire-circle", "willpower_xp", 100, "silver", 15, "willpower"),
+    _achievement("willpower_250", "No Excuses", "250 Willpower XP gesammelt", "mdi:shield-fire", "willpower_xp", 250, "gold", 30, "willpower", "Disciplined"),
+    _achievement("willpower_500", "Unbreakable", "500 Willpower XP gesammelt", "mdi:shield-star", "willpower_xp", 500, "platinum", 75, "willpower", "Unbreakable"),
+
+    # Coins earned
+    _achievement("coins_100", "Pocket Change", "100 Coins insgesamt verdient", "mdi:cash", "coins_earned", 100, "bronze", 5, "coins"),
+    _achievement("coins_500", "Treasure Hunter", "500 Coins insgesamt verdient", "mdi:treasure-chest", "coins_earned", 500, "silver", 15, "coins"),
+    _achievement("coins_1000", "Thousand Coins", "1.000 Coins insgesamt verdient", "mdi:gold", "coins_earned", 1000, "gold", 30, "coins", "Treasure Hunter"),
+    _achievement("coins_2500", "Dragon Hoard", "2.500 Coins insgesamt verdient", "mdi:treasure-chest", "coins_earned", 2500, "platinum", 75, "coins", "Dragon Hoard"),
+
+    # Active days
+    _achievement("active_3", "Showing Up", "An 3 verschiedenen Tagen aktiv", "mdi:calendar-heart", "active_days", 3, "bronze", 3, "consistency"),
+    _achievement("active_7", "One Week In", "An 7 verschiedenen Tagen aktiv", "mdi:calendar-week", "active_days", 7, "silver", 10, "consistency"),
+    _achievement("active_30", "Month of Action", "An 30 verschiedenen Tagen aktiv", "mdi:calendar-month", "active_days", 30, "gold", 30, "consistency", "Consistent"),
+
+    # Perfect days
+    _achievement("perfect_1", "Perfect Day", "Einen Tag mit 100 % abgeschlossen", "mdi:weather-sunny", "perfect_days", 1, "bronze", 5, "consistency"),
+    _achievement("perfect_7", "Perfect Week", "7 perfekte Tage gesammelt", "mdi:calendar-star", "perfect_days", 7, "gold", 35, "consistency", "Perfectionist"),
+    _achievement("perfect_30", "Flawless", "30 perfekte Tage gesammelt", "mdi:diamond-stone", "perfect_days", 30, "diamond", 150, "consistency", "Flawless"),
+
+    # Planned streaks
+    _achievement("streak_3", "Threepeat", "3 geplante Abschlüsse in Folge", "mdi:fire", "best_streak", 3, "bronze", 3, "streak"),
+    _achievement("streak_7", "On Fire", "7 geplante Abschlüsse in Folge", "mdi:fire-circle", "best_streak", 7, "silver", 10, "streak"),
+    _achievement("streak_14", "Two Weeks Strong", "14 geplante Abschlüsse in Folge", "mdi:calendar-range", "best_streak", 14, "gold", 25, "streak", "On Fire"),
+    _achievement("streak_30", "Unstoppable", "30 geplante Abschlüsse in Folge", "mdi:rocket-launch", "best_streak", 30, "platinum", 75, "streak", "Unstoppable"),
 ]
+
+
+TIER_RANK = {
+    "bronze": 1,
+    "silver": 2,
+    "gold": 3,
+    "platinum": 4,
+    "diamond": 5,
+}
 
 
 def sync_achievements(connection):
     for item in ACHIEVEMENT_DEFINITIONS:
         connection.execute(text("""
             INSERT INTO achievements
-                (code, name, description, icon, metric, target_value, active)
+                (code,name,description,icon,metric,target_value,tier,reward_coins,title,category,active)
             VALUES
-                (:code, :name, :description, :icon, :metric, :target, 1)
+                (:code,:name,:description,:icon,:metric,:target,:tier,:reward,:title,:category,1)
             ON CONFLICT(code) DO UPDATE SET
                 name=excluded.name,
                 description=excluded.description,
                 icon=excluded.icon,
                 metric=excluded.metric,
                 target_value=excluded.target_value,
+                tier=excluded.tier,
+                reward_coins=excluded.reward_coins,
+                title=excluded.title,
+                category=excluded.category,
                 active=1
         """), {
             "code": item["code"],
@@ -794,25 +827,36 @@ def sync_achievements(connection):
             "icon": item["icon"],
             "metric": item["metric"],
             "target": item["target"],
+            "tier": item["tier"],
+            "reward": item["reward"],
+            "title": item["title"],
+            "category": item["category"],
         })
 
 
 def achievement_metrics(connection):
+    def count_type(quest_type):
+        return int(connection.execute(text("""
+            SELECT COUNT(*)
+            FROM quest_completions qc
+            JOIN quests q ON q.id=qc.quest_id
+            WHERE q.quest_type=:quest_type
+        """), {"quest_type": quest_type}).scalar_one())
+
     total_completions = int(connection.execute(text(
         "SELECT COUNT(*) FROM quest_completions"
     )).scalar_one())
-
-    training_completions = int(connection.execute(text("""
-        SELECT COUNT(*)
-        FROM quest_completions qc
-        JOIN quests q ON q.id=qc.quest_id
-        WHERE q.quest_type='training'
-    """)).scalar_one())
 
     boss_completions = int(connection.execute(text("""
         SELECT COUNT(*)
         FROM quest_completions
         WHERE COALESCE(kbr_at_completion,0) >= 5
+    """)).scalar_one())
+
+    total_xp = int(connection.execute(text("""
+        SELECT COALESCE(SUM(amount),0)
+        FROM xp_ledger
+        WHERE xp_type IN ('normal','bonus')
     """)).scalar_one())
 
     willpower_xp = int(connection.execute(text("""
@@ -821,11 +865,40 @@ def achievement_metrics(connection):
         WHERE xp_type='willpower'
     """)).scalar_one())
 
+    coins_earned = int(connection.execute(text("""
+        SELECT COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),0)
+        FROM coin_ledger
+    """)).scalar_one())
+
+    active_days = int(connection.execute(text("""
+        SELECT COUNT(DISTINCT DATE(completed_at))
+        FROM quest_completions
+    """)).scalar_one())
+
+    perfect_days = int(connection.execute(text("""
+        SELECT COUNT(*)
+        FROM daily_summary
+        WHERE percentage >= 100
+    """)).scalar_one())
+
+    streak_data = fetch_streaks_v2(connection)
+    best_streak = max(
+        [int(x.get("best_streak") or 0) for x in streak_data.get("streaks", [])],
+        default=0
+    )
+
     return {
         "total_completions": total_completions,
-        "training_completions": training_completions,
+        "training_completions": count_type("training"),
+        "habit_completions": count_type("habit"),
+        "routine_completions": count_type("routine"),
         "boss_completions": boss_completions,
+        "total_xp": total_xp,
         "willpower_xp": willpower_xp,
+        "coins_earned": coins_earned,
+        "active_days": active_days,
+        "perfect_days": perfect_days,
+        "best_streak": best_streak,
     }
 
 
@@ -834,39 +907,80 @@ def evaluate_achievements(connection):
     metrics = achievement_metrics(connection)
 
     achievements = connection.execute(text("""
-        SELECT id, code, name, description, icon, metric, target_value
+        SELECT
+            id,code,name,description,icon,metric,target_value,
+            tier,reward_coins,title,category
         FROM achievements
         WHERE active=1
-        ORDER BY id
+        ORDER BY
+            CASE tier
+                WHEN 'bronze' THEN 1
+                WHEN 'silver' THEN 2
+                WHEN 'gold' THEN 3
+                WHEN 'platinum' THEN 4
+                WHEN 'diamond' THEN 5
+                ELSE 9
+            END,
+            id
     """)).mappings().all()
 
     result = []
+    newly_unlocked = []
 
     for ach in achievements:
         current = int(metrics.get(ach["metric"], 0))
         target = int(ach["target_value"])
-        unlocked = current >= target
+        reached = current >= target
 
         existing = connection.execute(text("""
-            SELECT id, unlocked_at
+            SELECT id,unlocked_at,reward_granted
             FROM achievement_unlocks
             WHERE achievement_id=:aid
             LIMIT 1
         """), {"aid": ach["id"]}).mappings().first()
 
-        if unlocked and not existing:
+        if reached and not existing:
             connection.execute(text("""
                 INSERT INTO achievement_unlocks
-                    (achievement_id, unlocked_at)
+                    (achievement_id,unlocked_at,reward_granted)
                 VALUES
-                    (:aid, NOW())
+                    (:aid,NOW(),0)
             """), {"aid": ach["id"]})
+
             existing = connection.execute(text("""
-                SELECT id, unlocked_at
+                SELECT id,unlocked_at,reward_granted
                 FROM achievement_unlocks
                 WHERE achievement_id=:aid
                 LIMIT 1
             """), {"aid": ach["id"]}).mappings().first()
+
+            newly_unlocked.append({
+                "id": ach["id"],
+                "code": ach["code"],
+                "name": ach["name"],
+                "tier": ach["tier"],
+                "reward_coins": int(ach["reward_coins"] or 0),
+                "title": ach["title"],
+                "icon": ach["icon"],
+            })
+
+        # Grant each achievement's coin reward exactly once.
+        if existing and not bool(existing["reward_granted"]):
+            reward = int(ach["reward_coins"] or 0)
+            if reward > 0:
+                connection.execute(text("""
+                    INSERT INTO coin_ledger(amount,reason)
+                    VALUES(:amount,:reason)
+                """), {
+                    "amount": reward,
+                    "reason": f"Achievement: {ach['name']}",
+                })
+
+            connection.execute(text("""
+                UPDATE achievement_unlocks
+                SET reward_granted=1
+                WHERE achievement_id=:aid
+            """), {"aid": ach["id"]})
 
         result.append({
             "id": ach["id"],
@@ -875,6 +989,11 @@ def evaluate_achievements(connection):
             "description": ach["description"],
             "icon": ach["icon"],
             "metric": ach["metric"],
+            "category": ach["category"],
+            "tier": ach["tier"],
+            "tier_rank": TIER_RANK.get(ach["tier"], 0),
+            "reward_coins": int(ach["reward_coins"] or 0),
+            "title": ach["title"],
             "current": current,
             "target": target,
             "progress_percent": min(100, round((current / target) * 100)) if target else 100,
@@ -882,9 +1001,45 @@ def evaluate_achievements(connection):
             "unlocked_at": as_iso(existing["unlocked_at"]) if existing and existing["unlocked_at"] else None,
         })
 
+    unlocked = [x for x in result if x["unlocked"]]
+    locked = [x for x in result if not x["unlocked"]]
+
+    unlocked_titles = [
+        x for x in unlocked
+        if x.get("title")
+    ]
+    unlocked_titles.sort(
+        key=lambda x: (x["tier_rank"], x["target"]),
+        reverse=True,
+    )
+    current_title = unlocked_titles[0]["title"] if unlocked_titles else "Rookie"
+
+    nearest = sorted(
+        locked,
+        key=lambda x: (
+            -(x["progress_percent"]),
+            x["target"] - min(x["current"], x["target"]),
+        )
+    )[:5]
+
+    tier_counts = {}
+    for tier in TIER_RANK:
+        tier_items = [x for x in result if x["tier"] == tier]
+        tier_counts[tier] = {
+            "unlocked": sum(1 for x in tier_items if x["unlocked"]),
+            "total": len(tier_items),
+        }
+
     return {
-        "unlocked_count": sum(1 for x in result if x["unlocked"]),
+        "unlocked_count": len(unlocked),
         "total_count": len(result),
+        "completion_percent": round((len(unlocked) / len(result)) * 100) if result else 0,
+        "current_title": current_title,
+        "titles": [x["title"] for x in unlocked_titles],
+        "metrics": metrics,
+        "tier_counts": tier_counts,
+        "newly_unlocked": newly_unlocked,
+        "nearest": nearest,
         "achievements": result,
     }
 
@@ -1293,7 +1448,7 @@ def fetch_planner(connection, max_minutes: int | None = None):
         "possible_xp": int(today["possible_xp"]),
         "projected_coins": int(today["projected_coins"]),
         "algorithm": {
-            "version": "1.8.0",
+            "version": "1.9.0",
             "description": "Priorität + Fälligkeit + Überfälligkeit + KBR + XP + Dauer + Quest-Typ",
         },
     }
@@ -1969,7 +2124,7 @@ def health():
     return {
         "status": "ok",
         "database": "connected",
-        "version": "1.8.0",
+        "version": "1.9.0",
         "schema_version": schema_version,
     }
 

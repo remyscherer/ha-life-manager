@@ -43,7 +43,7 @@ bashio::log.info "Nach einer neuen/änderten Bridge ist ein Home Assistant Core 
 
 mkdir -p /homeassistant/www
 
-FRONTEND_VERSION="1.8.0"
+FRONTEND_VERSION="1.9.0"
 FRONTEND_FILE="life-manager-${FRONTEND_VERSION}.js"
 
 cp /frontend/life-manager.js "/homeassistant/www/${FRONTEND_FILE}" || \
@@ -81,5 +81,5 @@ if [ "${MIGRATE_FROM_MARIADB}" = "true" ] && [ ! -f /data/.mariadb_import_done ]
 fi
 
 bashio::log.info "SQLite-Datenbank: /data/life_manager.db"
-bashio::log.info "Starte Life Manager API v1.8.0"
+bashio::log.info "Starte Life Manager API v1.9.0"
 exec uvicorn main:app --host 0.0.0.0 --port 8000
